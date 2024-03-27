@@ -82,7 +82,10 @@ async fn get_raw_transaction() -> Result<(), Error> {
         .json::<RPCResponse>()
         .await?;
 
-    println!("Res: {}", response.result.vout[0].scriptPubKey.type_field);
+    let raw_tx = hex::decode(&response.result.hex).unwrap();
+    
+    let tx: bitcoin::Transaction = bitcoin::consensus::deserialize(&raw_tx).unwrap();
+    print!("Tx: {:?}", tx.output[0].script_pubkey.instructions());
 
     Ok(())
 }
@@ -98,6 +101,5 @@ async fn decode_tx_output(vout: Vout) {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     get_raw_transaction().await?;
-    println!("Hello, Runes!!");
     Ok(())
 }
