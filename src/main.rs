@@ -85,7 +85,7 @@ async fn get_raw_transaction() -> Result<(), Error> {
     let raw_tx = hex::decode(&response.result.hex).unwrap();
     
     let tx: bitcoin::Transaction = bitcoin::consensus::deserialize(&raw_tx).unwrap();
-    print!("Tx: {:?}", tx.output[0].script_pubkey.instructions());
+    print!("Tx: {:?}", tx);
 
     Ok(())
 }
