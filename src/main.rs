@@ -1,5 +1,3 @@
-
-
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 
@@ -81,32 +79,36 @@ struct RPCRequest {
 impl RPCRequest {
     fn new(method: &str, params: &[RPCValue]) -> RPCRequest {
         return RPCRequest {
-            jsonrpc: "1.0".to_string(), id: "rm".to_string(),
+            jsonrpc: "1.0".to_string(),
+            id: "rm".to_string(),
             method: method.to_string(),
             params: Vec::from(params),
-        }
+        };
     }
 }
 
 async fn get_raw_transaction() -> Result<(), Error> {
     let url =
         "https://clean-light-violet.btc.quiknode.pro/c22960fe7aa43d1cfaf1e8a2b8cf60a1a430b7cb";
-    // let json_data = r#"{
-    //     "jsonrpc": "1.0", 
-    //     "id": "curltest", 
-    //     "method": "getrawtransaction", 
-    //     "params": ["98a509a0b3fb9068a66ebd8f8c4ff8ef4b8b40827401a708ec5e32536192bb05", true]
-    // }"#;
 
     let client = reqwest::Client::new();
 
     let response = client
         .post(url)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&RPCRequest::new( "getrawtransaction", &[
-            RPCValue::Str("98a509a0b3fb9068a66ebd8f8c4ff8ef4b8b40827401a708ec5e32536192bb05".to_string()),
-            RPCValue::Bool(true)
-        ])).unwrap())
+        .body(
+            serde_json::to_string(&RPCRequest::new(
+                "getrawtransaction",
+                &[
+                    RPCValue::Str(
+                        "98a509a0b3fb9068a66ebd8f8c4ff8ef4b8b40827401a708ec5e32536192bb05"
+                            .to_string(),
+                    ),
+                    RPCValue::Bool(true),
+                ],
+            ))
+            .unwrap(),
+        )
         // .body(json_data.to_owned())
         .send()
         .await?
@@ -115,21 +117,16 @@ async fn get_raw_transaction() -> Result<(), Error> {
     // print!("Txid: {:?}", &response);
 
     let raw_tx = hex::decode(&response.result.hex).unwrap();
-    
+
     let tx: bitcoin::Transaction = bitcoin::consensus::deserialize(&raw_tx).unwrap();
     print!("Tx: {:?}", tx);
-
 
     Ok(())
 }
 
-async fn decode_tx_input(vin: Vin) {
+async fn decode_tx_input(vin: Vin) {}
 
-}
-
-async fn decode_tx_output(vout: Vout) {
-
-}
+async fn decode_tx_output(vout: Vout) {}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
