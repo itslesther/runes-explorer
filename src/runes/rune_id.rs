@@ -1,13 +1,4 @@
 use super::*;
-use serde::*;
-// use serde_json::*;
-use serde_with::{DeserializeFromStr, SerializeDisplay};
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt;
-use std::str::FromStr;
-use anyhow::Error;
-
 
 #[derive(
   Debug,
@@ -22,7 +13,6 @@ use anyhow::Error;
   DeserializeFromStr,
   SerializeDisplay,
 )]
-
 pub struct RuneId {
   pub block: u64,
   pub tx: u32,
@@ -96,7 +86,7 @@ impl FromStr for RuneId {
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     let (height, index) = s
       .split_once(':')
-      .ok_or_else(|| panic!("invalid rune ID: {s}")).unwrap();
+      .ok_or_else(|| anyhow!("invalid rune ID: {s}"))?;
 
     Ok(Self {
       block: height.parse()?,

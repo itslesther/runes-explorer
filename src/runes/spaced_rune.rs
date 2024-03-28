@@ -1,12 +1,4 @@
-use serde_with::*;
-
-use super::*;
-use std::fmt::Display;
-use std::fmt;
-use std::str::FromStr;
-// use std::error::Error;
-
-// use super::rune::Rune;
+use super::runes::*;
 
 #[derive(
   Copy, Clone, Debug, PartialEq, Ord, PartialOrd, Eq, Default, DeserializeFromStr, SerializeDisplay,
@@ -23,7 +15,7 @@ impl SpacedRune {
 }
 
 impl FromStr for SpacedRune {
-  type Err = anyhow::Error;
+  type Err = Error;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     let mut rune = String::new();
@@ -33,18 +25,18 @@ impl FromStr for SpacedRune {
       match c {
         'A'..='Z' => rune.push(c),
         '.' | '•' => {
-          let flag = 1 << rune.len().checked_sub(1).ok_or("leading spacer").unwrap();
+          let flag = 1 << rune.len().checked_sub(1).context("leading spacer")?;
           if spacers & flag != 0 {
-            panic!("double spacer");
+            bail!("double spacer");
           }
           spacers |= flag;
         }
-        _ => panic!("invalid character"),
+        _ => bail!("invalid character"),
       }
     }
 
     if 32 - spacers.leading_zeros() >= rune.len().try_into().unwrap() {
-      panic!("trailing spacer")
+      bail!("trailing spacer")
     }
 
     Ok(SpacedRune {
@@ -67,5 +59,78 @@ impl Display for SpacedRune {
     }
 
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn display() {
+    assert_eq!("A.B".parse::<SpacedRune>().unwrap().to_string(), "A•B");
+    assert_eq!("A.B.C".parse::<SpacedRune>().unwrap().to_string(), "A•B•C");
+    assert_eq!(
+      SpacedRune {
+        rune: Rune(0),
+        spacers: 1
+      }
+      .to_string(),
+      "A"
+    );
+  }
+
+  #[test]
+  fn from_str() {
+    #[track_caller]
+    fn case(s: &str, rune: &str, spacers: u32) {
+      assert_eq!(
+        s.parse::<SpacedRune>().unwrap(),
+        SpacedRune {
+          rune: rune.parse().unwrap(),
+          spacers
+        },
+      );
+    }
+
+    assert_eq!(
+      ".A".parse::<SpacedRune>().unwrap_err().to_string(),
+      "leading spacer",
+    );
+
+    assert_eq!(
+      "A..B".parse::<SpacedRune>().unwrap_err().to_string(),
+      "double spacer",
+    );
+
+    assert_eq!(
+      "A.".parse::<SpacedRune>().unwrap_err().to_string(),
+      "trailing spacer",
+    );
+
+    assert_eq!(
+      "Ax".parse::<SpacedRune>().unwrap_err().to_string(),
+      "invalid character",
+    );
+
+    case("A.B", "AB", 0b1);
+    case("A.B.C", "ABC", 0b11);
+    case("A•B", "AB", 0b1);
+    case("A•B•C", "ABC", 0b11);
+    case("A•BC", "ABC", 0b1);
+  }
+
+  #[test]
+  fn serde() {
+    let spaced_rune = SpacedRune {
+      rune: Rune(26),
+      spacers: 1,
+    };
+    let json = "\"A•A\"";
+    assert_eq!(serde_json::to_string(&spaced_rune).unwrap(), json);
+    assert_eq!(
+      serde_json::from_str::<SpacedRune>(json).unwrap(),
+      spaced_rune
+    );
   }
 }

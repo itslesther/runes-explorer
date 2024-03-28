@@ -1,6 +1,4 @@
-use std::collections::{HashMap, VecDeque};
-
-use super::*;
+use super::runes::*;
 
 #[derive(Copy, Clone, Debug)]
 pub(super) enum Tag {
@@ -9,7 +7,7 @@ pub(super) enum Tag {
   Rune = 4,
   Premine = 6,
   Cap = 8,
-  Limit = 10,
+  Amount = 10,
   HeightStart = 12,
   HeightEnd = 14,
   OffsetStart = 16,

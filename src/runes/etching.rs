@@ -1,7 +1,4 @@
-// use super::*;
-use serde::*;
-use crate::runes::rune::Rune;
-use crate::runes::terms::Terms;
+use super::runes::*;
 
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
 pub struct Etching {

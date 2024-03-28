@@ -1,10 +1,4 @@
-use std::fmt::Display;
-
-// use super::*;
-use serde::*;
-// use serde_json::ser::Formatter;
-use std::fmt;
-use std::fmt::Formatter;
+use super::runes::*;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy)]
 pub struct Pile {
@@ -40,9 +34,7 @@ impl Display for Pile {
 
 #[cfg(test)]
 mod tests {
-  use crate::runes::MAX_DIVISIBILITY;
-
-use super::*;
+  use super::*;
 
   #[test]
   fn display() {

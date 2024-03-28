@@ -1,12 +1,9 @@
 
 
-use reqwest::Error;
-// use std::collections::HashMap;
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
 
-// mod runes; 
 mod runes;
-// use runes::Runestone;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ResultObj {
@@ -94,12 +91,12 @@ impl RPCRequest {
 async fn get_raw_transaction() -> Result<(), Error> {
     let url =
         "https://clean-light-violet.btc.quiknode.pro/c22960fe7aa43d1cfaf1e8a2b8cf60a1a430b7cb";
-    let json_data = r#"{
-        "jsonrpc": "1.0", 
-        "id": "curltest", 
-        "method": "getrawtransaction", 
-        "params": ["98a509a0b3fb9068a66ebd8f8c4ff8ef4b8b40827401a708ec5e32536192bb05", true]
-    }"#;
+    // let json_data = r#"{
+    //     "jsonrpc": "1.0", 
+    //     "id": "curltest", 
+    //     "method": "getrawtransaction", 
+    //     "params": ["98a509a0b3fb9068a66ebd8f8c4ff8ef4b8b40827401a708ec5e32536192bb05", true]
+    // }"#;
 
     let client = reqwest::Client::new();
 

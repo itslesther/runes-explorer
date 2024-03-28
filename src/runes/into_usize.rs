@@ -1,4 +1,4 @@
-pub(crate) trait IntoUsize {
+pub trait IntoUsize {
   fn into_usize(self) -> usize;
 }
 

@@ -1,6 +1,4 @@
-// use super::*;
-use serde::*;
-use crate::runes::rune_id::RuneId;
+use super::runes::*;
 
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
 pub struct Edict {
@@ -11,7 +9,7 @@ pub struct Edict {
 
 impl Edict {
   pub(crate) fn from_integers(
-    tx: &bitcoin::Transaction,
+    tx: &Transaction,
     id: RuneId,
     amount: u128,
     output: u128,
