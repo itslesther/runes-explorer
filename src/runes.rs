@@ -18,8 +18,13 @@ pub use {
         Amount, Block, Network, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
         Txid, Witness,
     },
+    cenotaph::Cenotaph,
+    chain::Chain,
     edict::Edict,
     etching::Etching,
+    height::Height,
+    into_usize::IntoUsize,
+    message::Message,
     pile::Pile,
     rune::Rune,
     rune_id::RuneId,
@@ -27,35 +32,26 @@ pub use {
     serde::*,
     serde_with::{DeserializeFromStr, SerializeDisplay},
     spaced_rune::SpacedRune,
-    terms::Terms,
-    into_usize::IntoUsize,
-    chain::Chain,
-    height::Height,
-    cenotaph::Cenotaph,
-    message::Message,
-    // crate::
-    // super::into_usize::IntoUsize,
-    // crate::runes::in
-    // super:::into_usize::IntoUsize,
     std::{
         collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
         fmt,
         fmt::{Display, Formatter},
-        str::FromStr,
         path::{Path, PathBuf},
+        str::FromStr,
     },
+    terms::Terms,
 };
 
 pub type Result<T = (), E = Error> = std::result::Result<T, E>;
 
-pub const MAX_DIVISIBILITY: u8 = 38;
-
-const MAGIC_NUMBER: opcodes::All = opcodes::all::OP_PUSHNUM_13;
-const RESERVED: u128 = 6402364363415443603228541259936211926;
-
+mod cenotaph;
+mod chain;
 mod edict;
 mod etching;
 mod flag;
+mod height;
+mod into_usize;
+mod message;
 mod pile;
 mod rune;
 mod rune_id;
@@ -64,11 +60,6 @@ mod spaced_rune;
 mod tag;
 mod terms;
 pub mod varint;
-mod into_usize;
-mod chain;
-mod height;
-mod cenotaph;
-mod message;
 
 fn default<T: Default>() -> T {
     Default::default()
