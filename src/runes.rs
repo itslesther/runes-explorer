@@ -31,6 +31,8 @@ pub use {
     into_usize::IntoUsize,
     chain::Chain,
     height::Height,
+    cenotaph::Cenotaph,
+    message::Message,
     // crate::
     // super::into_usize::IntoUsize,
     // crate::runes::in
@@ -65,6 +67,8 @@ pub mod varint;
 mod into_usize;
 mod chain;
 mod height;
+mod cenotaph;
+mod message;
 
 fn default<T: Default>() -> T {
     Default::default()

@@ -48,3 +48,39 @@ impl PartialEq<u32> for Height {
   }
 }
 
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn n() {
+    assert_eq!(Height(0).n(), 0);
+    assert_eq!(Height(1).n(), 1);
+  }
+
+  #[test]
+  fn add() {
+    assert_eq!(Height(0) + 1, 1);
+    assert_eq!(Height(1) + 100, 101);
+  }
+
+  #[test]
+  fn sub() {
+    assert_eq!(Height(1) - 1, 0);
+    assert_eq!(Height(100) - 50, 50);
+  }
+
+  #[test]
+  fn eq() {
+    assert_eq!(Height(0), 0);
+    assert_eq!(Height(100), 100);
+  }
+  #[test]
+  fn period_offset() {
+    assert_eq!(Height(0).period_offset(), 0);
+    assert_eq!(Height(1).period_offset(), 1);
+    assert_eq!(Height(DIFFCHANGE_INTERVAL - 1).period_offset(), 2015);
+    assert_eq!(Height(DIFFCHANGE_INTERVAL).period_offset(), 0);
+    assert_eq!(Height(DIFFCHANGE_INTERVAL + 1).period_offset(), 1);
+  }
+}
