@@ -19,7 +19,6 @@ pub use {
         Txid, Witness,
     },
     cenotaph::Cenotaph,
-    chain::Chain,
     edict::Edict,
     etching::Etching,
     height::Height,
@@ -45,7 +44,6 @@ pub use {
 pub type Result<T = (), E = Error> = std::result::Result<T, E>;
 
 mod cenotaph;
-mod chain;
 mod edict;
 mod etching;
 mod flag;
@@ -61,7 +59,7 @@ mod tag;
 mod terms;
 pub mod varint;
 
-fn default<T: Default>() -> T {
+pub fn default<T: Default>() -> T {
     Default::default()
 }
 
