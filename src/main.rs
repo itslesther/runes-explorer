@@ -213,6 +213,6 @@ async fn main() -> Result<(), Error> {
 
     println!("Best Block hash: {:?}", btc_rpc::get_best_block_hash().await?);
 
-    println!("Runestone: {:?}", runes::Runestone::from_transaction(&tx));
+    println!("Runestone: {:?}", runes::Runestone::decipher(&tx));
     Ok(())
 }

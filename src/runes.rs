@@ -26,6 +26,7 @@ pub use {
     message::Message,
     pile::Pile,
     rune::Rune,
+    flaw::Flaw,
     rune_id::RuneId,
     runestone::Runestone,
     serde::*,
@@ -39,6 +40,7 @@ pub use {
         str::FromStr,
     },
     terms::Terms,
+    artifact::Artifact,
 };
 
 pub type Result<T = (), E = Error> = std::result::Result<T, E>;
@@ -58,6 +60,8 @@ mod spaced_rune;
 mod tag;
 mod terms;
 pub mod varint;
+mod flaw;
+mod artifact;
 
 pub fn default<T: Default>() -> T {
     Default::default()

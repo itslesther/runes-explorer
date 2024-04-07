@@ -2,7 +2,6 @@ use anyhow::{Error, Ok};
 use bitcoin::{consensus::deserialize, Transaction};
 use reqwest::Response;
 use serde::*;
-use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RPCResponse<T> {
@@ -29,12 +28,12 @@ pub struct RPCRequest {
 
 impl RPCRequest {
     fn new(method: &str, params: &[RPCValue]) -> RPCRequest {
-        return RPCRequest {
+        RPCRequest {
             jsonrpc: "1.0".to_string(),
             id: "rm".to_string(),
             method: method.to_string(),
             params: Vec::from(params),
-        };
+        }
     }
 }
 
@@ -84,13 +83,13 @@ pub async fn get_best_block_hash() -> Result<String, Error> {
     Ok(result)
 }
 
-async fn rpc_request(params: &RPCRequest) -> Result<Response, Error> {
+async fn rpc_request(request: &RPCRequest) -> Result<Response, Error> {
     let client = reqwest::Client::new();
 
     let response = client
         .post(BTC_RPC_URL)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(params).unwrap())
+        .body(serde_json::to_string(request).unwrap())
         // .body(json_data.to_owned())
         .send()
         .await?;
