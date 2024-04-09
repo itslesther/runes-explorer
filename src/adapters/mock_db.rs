@@ -51,6 +51,7 @@ pub struct TXO {
     pub address: Option<String>,
     // pub rune_transfers: Vec<RuneTransfer>,
     pub is_unspent: bool,
+    pub spent_tx_id: Option<String>,
     pub timestamp: u32,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -130,9 +131,10 @@ impl MockDb {
             .find(|txo| txo.tx_id == tx_id && txo.output_index == output_index))
     }
 
-    pub fn mark_utxo_as_spent(&mut self, tx_id: &str, output_index: u32) -> Result<(), Error> {
+    pub fn mark_utxo_as_spent(&mut self, tx_id: &str, output_index: u32, spent_tx_id: &str) -> Result<(), Error> {
         if let Some(txo) = self.get_txo(tx_id, output_index)? {
             txo.is_unspent = false;
+            txo.spent_tx_id = Some(spent_tx_id.to_string());
         }
 
         let mut rune_transfers = self.get_runes_transfers_by_tx(tx_id, output_index)?;

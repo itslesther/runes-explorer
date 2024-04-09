@@ -32,7 +32,7 @@ impl RuneUpdater {
         let mut allocated: Vec<HashMap<RuneId, Lot>> = vec![HashMap::new(); tx.output.len()];
 
         self.add_transaction(txid, &artifact)?;
-        self.mark_txs_as_spent(tx)?;
+        self.mark_txs_as_spent(tx, txid)?;
         self.add_txo(tx, txid)?;
 
         if let Some(artifact) = &artifact {
@@ -254,6 +254,7 @@ impl RuneUpdater {
                     None
                 },
                 is_unspent: true,
+                spent_tx_id: None,
                 timestamp: self.block_time,
             };
 
@@ -451,11 +452,12 @@ impl RuneUpdater {
         Ok(unallocated)
     }
 
-    fn mark_txs_as_spent(&mut self, tx: &Transaction) -> Result<()> {
+    fn mark_txs_as_spent(&mut self, tx: &Transaction, txid: Txid) -> Result<()> {
         for input in &tx.input {
             self.database.mark_utxo_as_spent(
                 &input.previous_output.txid.to_string(),
                 input.previous_output.vout,
+                &txid.to_string(),
             )?;
         }
 
