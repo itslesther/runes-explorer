@@ -6,56 +6,8 @@ mod adapters;
 mod btc_rpc;
 mod runes;
 mod runes_decoder;
-
-// #[derive(Serialize, Deserialize, Debug)]
-// struct ResultObj {
-//     txid: String,
-//     hash: String,
-//     version: i32,
-//     size: i32,
-//     vsize: i32,
-//     weight: i32,
-//     locktime: i32,
-//     vin: Vec<Vin>,
-//     vout: Vec<Vout>,
-//     hex: String,
-//     blockhash: String,
-//     confirmations: i32,
-//     time: i64, // Use i64 for Unix timestamps
-//     blocktime: i64,
-// }
-
-// #[derive(Serialize, Deserialize, Debug)]
-// struct Vin {
-//     txid: String,
-//     vout: i32,
-//     scriptSig: ScriptSig,
-//     txinwitness: Vec<String>,
-//     sequence: u32,
-// }
-
-// #[derive(Serialize, Deserialize, Debug)]
-// struct ScriptSig {
-//     asm: String,
-//     hex: String,
-// }
-
-// #[derive(Serialize, Deserialize, Debug)]
-// struct Vout {
-//     value: f64,
-//     n: i32,
-//     scriptPubKey: ScriptPubKey,
-// }
-
-// #[derive(Serialize, Deserialize, Debug)]
-// struct ScriptPubKey {
-//     asm: String,
-//     desc: String,
-//     hex: String,
-//     address: Option<String>,
-//     #[serde(rename = "type")] // Handle the "type" field
-//     type_field: String,
-// }
+mod rune_updaters;
+mod lot;
 
 // #[derive(Serialize, Deserialize, Debug)]
 // struct RPCResponse {
@@ -206,13 +158,13 @@ async fn main() -> Result<(), Error> {
     println!(
         "Address {:?}",
         Address::from_script(
-            tx.output[0].script_pubkey.as_script(),
+            tx.data.output[0].script_pubkey.as_script(),
             bitcoin::Network::Bitcoin
         )?.to_string()
     );
 
     println!("Best Block hash: {:?}", btc_rpc::get_best_block_hash().await?);
 
-    println!("Runestone: {:?}", runes::Runestone::decipher(&tx));
+    println!("Runestone: {:?}", runes::Runestone::decipher(&tx.data));
     Ok(())
 }

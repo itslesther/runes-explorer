@@ -3,6 +3,62 @@ use bitcoin::{consensus::deserialize, Transaction};
 use reqwest::Response;
 use serde::*;
 
+// #[derive(Serialize, Deserialize, Debug)]
+pub struct TransactionInfo {
+    pub raw: RawTxObj,
+    pub data: Transaction,
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RawTxObj {
+    pub txid: String,
+    pub hash: String,
+    pub version: u32,
+    pub size: u32,
+    pub vsize: u32,
+    pub weight: u32,
+    pub locktime: u64,
+    pub vin: Vec<Vin>,
+    pub vout: Vec<Vout>,
+    pub hex: String,
+    pub blockhash: String,
+    pub confirmations: Option<u32>,
+    pub time: u64, // Use i64 for Unix timestamps
+    pub blocktime: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Vin {
+    txid: String,
+    vout: u32,
+    scriptSig: ScriptSig,
+    txinwitness: Vec<String>,
+    sequence: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ScriptSig {
+    asm: String,
+    hex: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Vout {
+    value: f64,
+    n: u32,
+    scriptPubKey: ScriptPubKey,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ScriptPubKey {
+    asm: String,
+    desc: String,
+    hex: String,
+    address: Option<String>,
+    #[serde(rename = "type")] // Handle the "type" field
+    type_field: String,
+}
+
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RPCResponse<T> {
     result: T,
@@ -40,25 +96,31 @@ impl RPCRequest {
 pub const BTC_RPC_URL: &str =
     "https://clean-light-violet.btc.quiknode.pro/c22960fe7aa43d1cfaf1e8a2b8cf60a1a430b7cb";
 
-pub async fn get_transaction(id: &str) -> Result<Transaction, Error> {
-    let raw_tx = get_raw_transaction(id).await?;
+pub async fn get_transaction(id: &str) -> Result<TransactionInfo, Error> {
+    let raw = get_raw_transaction(id).await?;
+    let hex = hex::decode(&raw.hex).unwrap();
 
-    let tx: Transaction = deserialize(&raw_tx).unwrap();
+    let data: Transaction = deserialize(&hex).unwrap();
 
-    Ok(tx)
+    let transaction_info = TransactionInfo {
+        raw,
+        data,
+    };
+
+    Ok(transaction_info)
 }
 
-pub async fn get_raw_transaction(id: &str) -> Result<Vec<u8>, Error> {
+pub async fn get_raw_transaction(id: &str) -> Result<RawTxObj, Error> {
     let response = rpc_request(&RPCRequest::new(
         "getrawtransaction",
-        &[RPCValue::Str(id.to_string())],
+        &[RPCValue::Str(id.to_string()), RPCValue::Int(1)],
     ))
     .await?;
 
-    let result = response.json::<RPCResponse<String>>().await?.result;
-    let raw_tx = hex::decode(&result).unwrap();
+    let result = response.json::<RPCResponse<RawTxObj>>().await?.result;
+    // let hex = hex::decode(&result.hex).unwrap();
 
-    Ok(raw_tx)
+    Ok(result)
 }
 
 // pub async fn get_latest_validated_block() -> Result<(), Error> {
