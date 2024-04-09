@@ -436,7 +436,7 @@ impl RuneUpdater {
 
         // increment unallocated runes with the runes in tx inputs
         for input in &tx.input {
-            let rune_transfers = self.database.get_runes_transfers(
+            let rune_transfers = self.database.get_runes_transfers_by_tx(
                 &input.previous_output.txid.to_string(),
                 input.previous_output.vout,
             )?;

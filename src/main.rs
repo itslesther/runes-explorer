@@ -148,13 +148,7 @@ async fn main() -> Result<(), Error> {
         "0922b1308df414934b73d46ffdafba547b5c732c549f138d2430c0469d905534",
     )
     .await?;
-    // println!(
-    //     "Address {:?}",
-    //     Address::from_script(
-    //         tx.input[0].previous_output.as_script(),
-    //         bitcoin::Network::Bitcoin
-    //     )?.to_string()
-    // );
+
     println!(
         "Address {:?}",
         Address::from_script(

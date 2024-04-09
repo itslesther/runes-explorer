@@ -74,7 +74,7 @@ impl MockDb {
         }
     }
 
-    pub fn get_runes_transfers(
+    pub fn get_runes_transfers_by_tx(
         &mut self,
         tx_id: &str,
         tx_index: u32,
@@ -135,8 +135,10 @@ impl MockDb {
             txo.is_unspent = false;
         }
 
-        let mut rune_transfers = self.get_runes_transfers(tx_id, output_index)?;
-        rune_transfers.iter_mut().for_each(|rt| rt.is_unspent = false);
+        let mut rune_transfers = self.get_runes_transfers_by_tx(tx_id, output_index)?;
+        rune_transfers
+            .iter_mut()
+            .for_each(|rt| rt.is_unspent = false);
 
         Ok(())
     }
@@ -144,6 +146,25 @@ impl MockDb {
     pub fn add_txo(&mut self, txo: TXO) {
         self.txos.push(txo);
     }
+
+    pub fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> u128 {
+        self.rune_transfers
+            .iter()
+            .filter(|rt| {
+                rt.address == Some(address.to_string()) && rt.rune_id == rune_id && rt.is_unspent
+            })
+            .map(|rt| rt.amount)
+            .sum()
+    }
+
+    pub fn get_address_transfer(&self, address: &str) -> Vec<&RuneTransfer> {
+        self.rune_transfers
+            .iter()
+            .filter(|rt| rt.address == Some(address.to_string()))
+            .collect()
+    }
+
+    // pub fn get_address_transfers
 
     // pub fn get_rune(&self, etching_tx_id: &str) -> Option<&RuneEntry> {
     //     self.rune_entries
