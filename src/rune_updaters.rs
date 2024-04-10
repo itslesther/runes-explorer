@@ -31,11 +31,12 @@ impl RuneUpdater {
         let mut unallocated = self.unallocated(tx)?;
         let mut allocated: Vec<HashMap<RuneId, Lot>> = vec![HashMap::new(); tx.output.len()];
 
-        self.add_transaction(txid, &artifact)?;
         self.mark_txs_as_spent(tx, txid)?;
-        self.add_txo(tx, txid)?;
-
+        
         if let Some(artifact) = &artifact {
+            self.add_transaction(txid, &artifact)?;
+            self.add_txo(tx, txid)?;
+
             if let Some(id) = artifact.mint() {
                 if let Some(amount) = self.mint(id)? {
                     *unallocated.entry(id).or_default() += amount;
@@ -209,21 +210,25 @@ impl RuneUpdater {
         Ok(())
     }
 
-    fn add_transaction(&mut self, txid: Txid, artifact: &Option<Artifact>) -> Result {
+    fn add_transaction(&mut self, txid: Txid, artifact: &Artifact) -> Result {
         self.database.add_transaction(DbTransaction {
             tx_id: txid.to_string(),
-            is_artifact: artifact.is_some(),
-            is_runestone: if let Some(Artifact::Runestone(_)) = artifact {
+            is_artifact: true,
+            // is_artifact: artifact.is_some(),
+            is_runestone: if let Artifact::Runestone(_) = artifact {
+            // is_runestone: if let Some(Artifact::Runestone(_)) = artifact {
                 true
             } else {
                 false
             },
-            is_cenotapth: if let Some(Artifact::Cenotaph(_)) = artifact {
+            is_cenotapth: if let Artifact::Cenotaph(_) = artifact {
+            // is_cenotapth: if let Some(Artifact::Cenotaph(_)) = artifact {
                 true
             } else {
                 false
             },
-            cenotapth_messages: if let Some(Artifact::Cenotaph(cenotaph)) = artifact {
+            cenotapth_messages: if let Artifact::Cenotaph(cenotaph) = artifact {
+            // cenotapth_messages: if let Some(Artifact::Cenotaph(cenotaph)) = artifact {
                 Some(
                     cenotaph
                         .flaws()
@@ -236,12 +241,12 @@ impl RuneUpdater {
                 None
             },
             timestamp: self.block_time,
-        });
+        })?;
         Ok(())
     }
 
-    fn add_txo(&mut self, tx: &Transaction, txid: Txid) -> Result {
-        tx.output.iter().enumerate().for_each(|(vout, _)| {
+    fn add_txo(&mut self, tx: &Transaction, txid: Txid) -> Result<(), Error> {
+        for (vout, _) in tx.output.iter().enumerate() {
             let txo = TXO {
                 tx_id: txid.to_string(),
                 output_index: vout as u32,
@@ -257,9 +262,9 @@ impl RuneUpdater {
                 spent_tx_id: None,
                 timestamp: self.block_time,
             };
-
-            self.database.add_txo(txo);
-        });
+    
+            self.database.add_txo(txo)?;
+        }
         Ok(())
     }
 
@@ -285,7 +290,7 @@ impl RuneUpdater {
                 },
                 is_unspent: true,
                 timestamp: self.block_time,
-            });
+            })?;
         }
 
         Ok(())
@@ -426,7 +431,7 @@ impl RuneUpdater {
             return Ok(None);
         };
 
-        self.database.update_rune_entry_mint_count(&id.to_string());
+        self.database.update_rune_entry_mint_count(&id.to_string())?;
 
         Ok(Some(Lot(amount)))
     }

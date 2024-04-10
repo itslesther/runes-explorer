@@ -2,13 +2,22 @@ use anyhow::{Error, Ok};
 use bitcoin::{consensus::deserialize, Transaction};
 use reqwest::Response;
 use serde::*;
-
-// #[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug)]
 pub struct TransactionInfo {
     pub raw: RawTxObj,
     pub data: Transaction,
 }
-#[derive(Serialize, Deserialize, Debug)]
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RawBlockHeader {
+    pub hash: String,
+    pub confirmations: u32,
+    pub height: u32,
+    pub time: u64,
+    #[serde(rename = "nTx")]
+    pub n_tx: u32,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RawTxObj {
     pub txid: String,
     pub hash: String,
@@ -20,35 +29,62 @@ pub struct RawTxObj {
     pub vin: Vec<Vin>,
     pub vout: Vec<Vout>,
     pub hex: String,
-    pub blockhash: String,
+    pub blockhash: Option<String>,
     pub confirmations: Option<u32>,
-    pub time: u64, // Use i64 for Unix timestamps
-    pub blocktime: u64,
+    pub time: Option<u64>, // Use i64 for Unix timestamps
+    pub blocktime: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Vin {
-    txid: String,
-    vout: u32,
-    scriptSig: ScriptSig,
-    txinwitness: Vec<String>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RawBlockObj<Tx> {
+    pub hash: String,
+    pub confirmations: u32,
+    pub height: u32,
+    pub version: u64,
+    #[serde(rename = "versionHex")]
+    pub version_hex: String,
+    pub merkleroot: String,
+    pub time: u64,
+    pub mediantime: u64,
+    pub nonce: u64,
+    pub bits: String,
+    pub difficulty: f64,
+    pub chainwork: String,
+    #[serde(rename = "nTx")]
+    pub n_tx: u32,
+    pub previousblockhash: String,
+    pub strippedsize: u64,
+    pub size: u64,
+    pub weight: u64,
+    pub tx: Vec<Tx>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Vin {
+    txid: Option<String>,
+    coinbase: Option<String>,
+    vout: Option<u32>,
+    #[serde(rename = "scriptSig")]
+    script_sig: Option<ScriptSig>,
+    txinwitness: Option<Vec<String>>,
     sequence: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ScriptSig {
     asm: String,
     hex: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Vout {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Vout {
     value: f64,
     n: u32,
-    scriptPubKey: ScriptPubKey,
+    #[serde(rename = "scriptPubKey")] // Handle the "type" field
+    script_pubkey: ScriptPubKey,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ScriptPubKey {
     asm: String,
     desc: String,
@@ -57,7 +93,6 @@ struct ScriptPubKey {
     #[serde(rename = "type")] // Handle the "type" field
     type_field: String,
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RPCResponse<T> {
@@ -93,8 +128,13 @@ impl RPCRequest {
     }
 }
 
+// TESTNET
 pub const BTC_RPC_URL: &str =
-    "https://clean-light-violet.btc.quiknode.pro/c22960fe7aa43d1cfaf1e8a2b8cf60a1a430b7cb";
+    "https://powerful-cool-bush.btc-testnet.quiknode.pro/cf40fbe86ac4d435ce4799c8aae18c1dc65b96c8";
+
+// MAINNET
+// pub const BTC_RPC_URL: &str =
+// "https://clean-light-violet.btc.quiknode.pro/c22960fe7aa43d1cfaf1e8a2b8cf60a1a430b7cb";
 
 pub async fn get_transaction(id: &str) -> Result<TransactionInfo, Error> {
     let raw = get_raw_transaction(id).await?;
@@ -102,40 +142,109 @@ pub async fn get_transaction(id: &str) -> Result<TransactionInfo, Error> {
 
     let data: Transaction = deserialize(&hex).unwrap();
 
-    let transaction_info = TransactionInfo {
-        raw,
-        data,
-    };
+    let transaction_info = TransactionInfo { raw, data };
 
     Ok(transaction_info)
 }
 
 pub async fn get_raw_transaction(id: &str) -> Result<RawTxObj, Error> {
-    let response = rpc_request(&RPCRequest::new(
+    let response: Response = rpc_request(&RPCRequest::new(
         "getrawtransaction",
         &[RPCValue::Str(id.to_string()), RPCValue::Int(1)],
     ))
     .await?;
 
     let result = response.json::<RPCResponse<RawTxObj>>().await?.result;
-    // let hex = hex::decode(&result.hex).unwrap();
-
     Ok(result)
 }
 
-// pub async fn get_latest_validated_block() -> Result<(), Error> {
-//     let block_hash = get_best_block_hash().await?;
+pub async fn get_latest_validated_block_height() -> Result<u32, Error> {
+    let block_hash = get_best_block_hash().await?;
 
-//     let response = rpc_request(&RPCRequest::new(
-//         "getblock",
-//         &[RPCValue::Str(block_hash)],
-//     ))
-//     .await?;
+    let response = rpc_request(&RPCRequest::new(
+        "getblockheader",
+        &[RPCValue::Str(block_hash), RPCValue::Bool(true)],
+    ))
+    .await?;
+    let block_header = response.json::<RPCResponse<RawBlockHeader>>().await?.result;
 
-//     let result = response.json::<RPCResponse<String>>().await?.result;
+    Ok(block_header.height)
+}
 
-//     Ok(result)
-// }
+pub async fn get_latest_validated_block() -> Result<RawBlockObj<TransactionInfo>, Error> {
+    let block_hash = get_best_block_hash().await?;
+
+    let block = get_block_by_hash(&block_hash).await?;
+
+    Ok(block)
+}
+
+pub async fn get_block_by_height(block_height: u32) -> Result<RawBlockObj<TransactionInfo>, Error> {
+    let response = rpc_request(&RPCRequest::new(
+        "getblockhash",
+        &[RPCValue::Int(block_height as usize)],
+    ))
+    .await?;
+
+    let block_hash = response.json::<RPCResponse<String>>().await?.result;
+
+    let block = get_block_by_hash(&block_hash).await?;
+
+    Ok(block)
+}
+
+pub async fn get_block_by_hash(block_hash: &str) -> Result<RawBlockObj<TransactionInfo>, Error> {
+    let response = rpc_request(&RPCRequest::new(
+        "getblock",
+        &[RPCValue::Str(block_hash.to_string()), RPCValue::Int(2)],
+    ))
+    .await?;
+
+    let result = response
+        .json::<RPCResponse<RawBlockObj<RawTxObj>>>()
+        .await?
+        .result;
+
+    let block: RawBlockObj<TransactionInfo> = RawBlockObj {
+        hash: result.hash,
+        confirmations: result.confirmations,
+        height: result.height,
+        version: result.version,
+        version_hex: result.version_hex,
+        merkleroot: result.merkleroot,
+        time: result.time,
+        mediantime: result.mediantime,
+        nonce: result.nonce,
+        bits: result.bits,
+        difficulty: result.difficulty,
+        chainwork: result.chainwork,
+        n_tx: result.n_tx,
+        previousblockhash: result.previousblockhash,
+        strippedsize: result.strippedsize,
+        size: result.size,
+        weight: result.weight,
+        tx: result
+            .tx
+            .iter()
+            .map(|raw_temp| {
+                let hex = hex::decode(&raw_temp.hex).unwrap();
+
+                let mut raw = raw_temp.clone();
+                raw.confirmations = Some(result.confirmations);
+                raw.time = Some(result.time);
+                raw.blocktime = Some(result.time);
+
+                let data: Transaction = deserialize(&hex).unwrap();
+
+                let transaction_info = TransactionInfo { raw, data };
+                // data.confirmations = Some(result.confirmations);
+                transaction_info
+            })
+            .collect(),
+    };
+
+    Ok(block)
+}
 
 pub async fn get_best_block_hash() -> Result<String, Error> {
     let response = rpc_request(&RPCRequest::new("getbestblockhash", &[])).await?;
