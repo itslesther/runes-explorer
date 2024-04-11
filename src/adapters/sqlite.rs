@@ -2,17 +2,17 @@ use super::db::*;
 use anyhow::Error;
 use rusqlite::{params, Connection, Result};
 
-#[derive(Debug)]
-pub struct SQLite {
-    conn: Connection,
+#[derive(Debug, Clone, Copy)]
+pub struct SQLite<'a> {
+    pub conn: &'a Connection,
 }
 
-impl SQLite {
-    pub fn init() -> Result<SQLite, Error> {
-        let conn = Connection::open("./runes.db")?;
+impl<'a> SQLite<'a> {
+    pub fn init_tables(&self) -> Result<(), Error> {
+        // let conn = &Connection::open("./runes.db")?;
         // let conn = Connection::open_in_memory()?;
 
-        conn.execute(
+        self.conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_entries (
             etching_tx_id TEXT NOT NULL,
             block_height INTEGER,
@@ -31,7 +31,7 @@ impl SQLite {
             (), // empty list of parameters.
         )?;
 
-        conn.execute(
+        self.conn.execute(
             "CREATE TABLE IF NOT EXISTS terms (
             rune_id TEXT NOT NULL,
             amount TEXT,
@@ -44,7 +44,7 @@ impl SQLite {
             (), // empty list of parameters.
         )?;
 
-        conn.execute(
+        self.conn.execute(
             "CREATE TABLE IF NOT EXISTS transactions (
             tx_id TEXT PRIMARY KEY,
             is_artifact BOOLEAN,
@@ -56,7 +56,7 @@ impl SQLite {
             (), // empty list of parameters.
         )?;
 
-        conn.execute(
+        self.conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_transfers (
             tx_id TEXT NOT NULL,
             output_index INTEGER,
@@ -71,7 +71,7 @@ impl SQLite {
             (), // empty list of parameters.
         )?;
 
-        conn.execute(
+        self.conn.execute(
             "CREATE TABLE IF NOT EXISTS txos (
             tx_id TEXT NOT NULL,
             output_index INTEGER,
@@ -86,18 +86,20 @@ impl SQLite {
             (), // empty list of parameters.
         )?;
 
-        conn.execute(
+        self.conn.execute(
             "CREATE TABLE IF NOT EXISTS statistics (
             block_height INTEGER NOT NULL
         )",
             (), // empty list of parameters.
         )?;
 
-        Ok(SQLite { conn })
+        println!("Tables initialized");
+
+        Ok(())
     }
 }
 
-impl Database for SQLite {
+impl<'a> Database for SQLite<'a> {
     fn get_runes_transfers_by_output_index(
         &mut self,
         tx_id: &str,
@@ -199,6 +201,11 @@ impl Database for SQLite {
             params![new_mint_count, rune_id],
         )?;
 
+        println!(
+            "Mint count for rune id {} updated to: {}",
+            new_mint_count, rune_id
+        );
+
         Ok(())
     }
 
@@ -220,6 +227,11 @@ impl Database for SQLite {
             "UPDATE rune_entries SET burned = ?1 WHERE rune_id = ?2",
             params![new_burned, rune_id],
         )?;
+
+        println!(
+            "Burned amount for rune id {} updated to: {}",
+            new_burned, rune_id
+        );
 
         Ok(())
     }
@@ -292,6 +304,8 @@ impl Database for SQLite {
             ],
         )?;
 
+        println!("Transaction added: {:?}", transaction.tx_id);
+
         Ok(())
     }
 
@@ -330,6 +344,8 @@ impl Database for SQLite {
             )?;
         }
 
+        println!("Rune entry added: {:?}", rune_entry.rune_id);
+
         Ok(())
     }
 
@@ -346,6 +362,8 @@ impl Database for SQLite {
             rune_transfer.spent_tx_id,
             rune_transfer.timestamp
         ])?;
+
+        println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
 
         Ok(())
     }
@@ -391,6 +409,8 @@ impl Database for SQLite {
             params![false, spent_tx_id, tx_id, output_index],
         )?;
 
+        println!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id);
+
         Ok(())
     }
 
@@ -408,6 +428,8 @@ impl Database for SQLite {
                 txo.timestamp
             ],
         )?;
+
+        println!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value);
 
         Ok(())
     }
@@ -477,13 +499,6 @@ impl Database for SQLite {
         let block_height = result_iter.map(|r| r.unwrap()).next().unwrap_or_default();
 
         Ok(block_height)
-    }
-
-    fn increase_block_height(&mut self) -> Result<(), Error> {
-        self.conn
-            .execute("UPDATE statistics SET block_height = block_height + 1", [])?;
-
-        Ok(())
     }
 
     fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error> {
@@ -558,5 +573,14 @@ impl Database for SQLite {
         })?;
 
         Ok(result_iter.map(|r| r.unwrap()).collect())
+    }
+
+    fn set_block_height(&mut self, block_height: u64) -> Result<(), Error> {
+        self.conn.execute(
+            "INSERT INTO statistics (block_height) VALUES (?1)",
+            params![block_height],
+        )?;
+
+        Ok(())
     }
 }

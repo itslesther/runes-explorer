@@ -96,7 +96,7 @@ pub trait Database {
     fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error>;
     fn get_rune_count(&self) -> Result<u128, Error>;
     fn get_block_height(&self) -> Result<u64, Error>;
-    fn increase_block_height(&mut self) -> Result<(), Error>;
+    fn set_block_height(&mut self, block_height: u64) -> Result<(), Error>;
     fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error>;
     fn get_runes(&self) -> Result<Vec<RuneEntry>, Error>;
 }

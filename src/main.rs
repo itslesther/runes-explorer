@@ -13,6 +13,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use crate::adapters::db::Database;
 use indexer::Indexer;
+use bitcoin::network::constants::Network;
 
 // async fn get_raw_transaction() -> Result<(), Error> {
 //     let mut script_pubkey: Vec<u8> = bitcoin::script::Builder::new()
@@ -114,7 +115,9 @@ use indexer::Indexer;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let indexer = Indexer::init();
+    let indexer = Indexer {
+        chain: Network::Bitcoin,
+    };
     indexer.index_blocks().await?;
     println!("Indexing complete");
 

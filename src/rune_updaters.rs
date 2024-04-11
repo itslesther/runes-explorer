@@ -1,31 +1,30 @@
 use crate::adapters::db::Database;
-
 use super::adapters::db::{RuneEntry, RuneTransfer, Terms, Transaction as DbTransaction, TXO};
-use super::adapters::mock_db::MockDb as Db;
-// use super::adapters::sqlite::SQLite as Db;
+// use super::adapters::mock_db::MockDb as Db;
+use super::adapters::sqlite::SQLite as Db;
 use super::btc_rpc;
 use super::lot::Lot;
 use super::runes::*;
 use super::utils;
 
-pub struct RuneUpdater {
-    pub database: Db,
+pub struct RuneUpdater<'a> {
+    pub database: Db<'a>,
     pub chain: Network,
     pub burned: HashMap<RuneId, Lot>,
     pub block_height: u32,
     pub block_time: u32,
 }
 
-impl RuneUpdater {
-    pub fn init(database: Db, chain: Network, block_height: u32, block_time: u32) -> RuneUpdater {
-        RuneUpdater {
-            database,
-            chain,
-            burned: HashMap::new(),
-            block_height,
-            block_time,
-        }
-    }
+impl<'a> RuneUpdater<'a> {
+    // pub fn init(database: Db, chain: Network, block_height: u32, block_time: u32) -> RuneUpdater {
+    //     RuneUpdater {
+    //         database,
+    //         chain,
+    //         burned: HashMap::new(),
+    //         block_height,
+    //         block_time,
+    //     }
+    // }
 
     pub async fn index_runes(
         &mut self,

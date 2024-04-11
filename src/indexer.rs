@@ -5,25 +5,51 @@ use crate::adapters::db::Database;
 use bitcoin::network::constants::Network;
 
 use anyhow::Error;
+use rusqlite::Connection;
 
 pub struct Indexer {
-    database: SQLite,
+    pub chain: Network,
+    // database: SQLite<'a>,
 }
 
-impl Indexer {
-    pub fn init() -> Indexer {
-        Indexer {
-            database: SQLite::init().unwrap(),
-        }
-    }
-
+impl<'a> Indexer {
     pub async fn index_blocks(&self) -> Result<(), Error> {
-        let database = &self.database;
-        let start_block_height: u32 = u32::try_from(database.get_block_height()?)?;
-        let latest_block_height: u32 = btc_rpc::get_latest_validated_block_height().await?;
+        let conn = &Connection::open("./runes.db")?;
+        print!("Connected to database");
 
-        for block_height in start_block_height..=latest_block_height {
-            println!("Indexing block: {}", block_height);
+        let mut database = SQLite { conn };
+        database.init_tables()?;
+
+        let halving_block_height: u32 = 2583205;
+
+        let end_block_height: u32 = btc_rpc::get_latest_validated_block_height().await?;
+        println!("Last block height: {}", end_block_height);
+
+        let mut start_block_height: u32 = u32::try_from(database.get_block_height()?)?;
+
+        if start_block_height == 0 {
+            println!(
+                "No blocks indexed yet, starting from the halving block: {}",
+                halving_block_height
+            );
+
+            database.set_block_height(halving_block_height.into())?;
+            start_block_height = halving_block_height;
+        } else {
+            println!("Resuming from block: {}", start_block_height);
+        }
+
+        if start_block_height >= end_block_height {
+            println!("No new blocks to index");
+            return Ok(());
+        }
+
+        for block_height in start_block_height..=end_block_height {
+            println!(
+                "\nIndexing block: {}. {}% completed",
+                block_height,
+                (block_height as f32 / end_block_height as f32) * 100.0
+            );
 
             let block = btc_rpc::get_block_by_height(block_height).await?;
 
@@ -31,29 +57,30 @@ impl Indexer {
 
             let txs = block.tx;
 
+            let mut rune_updater = RuneUpdater {
+                database,
+                chain: self.chain,
+                burned: HashMap::new(),
+                block_height,
+                block_time: u32::try_from(block.time)?,
+            };
+
             for (tx_index, tx) in txs.iter().enumerate() {
-              // let database = self.database;
-
-              // let rune_updater = RuneUpdater::init(database,  Network::Testnet, block_height, u32::try_from(block.time)?);
-                // let rune_updater = RuneUpdater {
-                //     database,
-                //     chain: Network::Testnet,
-                //     burned: HashMap::new(),
-                //     block_height,
-                //     block_time: u32::try_from(block.time)?,
-                // };
-
-                // rune_updater
-                //     .index_runes(
-                //         u32::try_from(tx_index)?,
-                //         &tx.data,
-                //         &tx.raw.txid.to_lowercase(),
-                //     )
-                //     .await?;
+                rune_updater
+                    .index_runes(
+                        u32::try_from(tx_index)?,
+                        &tx.data,
+                        &tx.raw.txid.to_lowercase(),
+                    )
+                    .await?;
             }
+
+            rune_updater.update()?;
+            database.set_block_height(block_height.into())?;
         }
 
-        // self.database.increase_block_height()?;
+        database.set_block_height(end_block_height.into())?;
+
         Ok(())
     }
 }

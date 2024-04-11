@@ -156,11 +156,6 @@ impl Database for MockDb {
         Ok(self.statistics.block_height)
     }
 
-    fn increase_block_height(&mut self) -> Result<(), Error> {
-        self.statistics.block_height += 1;
-        Ok(())
-    }
-
     fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error> {
         Ok(self
             .transactions
@@ -171,5 +166,10 @@ impl Database for MockDb {
 
     fn get_runes(&self) -> Result<Vec<RuneEntry>, Error> {
         Ok(self.rune_entries.clone())
+    }
+
+    fn set_block_height(&mut self, block_height: u64) -> Result<(), Error> {
+        self.statistics.block_height = block_height;
+        Ok(())
     }
 }
