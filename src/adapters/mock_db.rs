@@ -1,154 +1,93 @@
+use super::db::*;
 use anyhow::Error;
-use serde::*;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MockDb {
-    rune_entries: Vec<RuneEntry>,
-    transactions: Vec<Transaction>,
-    rune_transfers: Vec<RuneTransfer>,
-    txos: Vec<TXO>,
-    statistics: Statistics,
+    pub rune_entries: Vec<RuneEntry>,
+    pub transactions: Vec<Transaction>,
+    pub rune_transfers: Vec<RuneTransfer>,
+    pub txos: Vec<TXO>,
+    pub statistics: Statistics,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Statistics {
-    rune_count: u128,
-    block_height: u64,
-}
+impl Database for MockDb {
+    // fn init() -> Result<(), Error> {
+    //     Ok(())
+    // }
+    // fn init() -> MockDb {
+    //     MockDb {
+    //         rune_entries: Vec::new(),
+    //         transactions: Vec::new(),
+    //         rune_transfers: Vec::new(),
+    //         txos: Vec::new(),
+    //         statistics: Statistics {
+    //             rune_count: 0,
+    //             block_height: 0,
+    //         },
+    //     }
+    // }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RuneEntry {
-    pub etching_tx_id: String,
-    pub block_height: u64,
-    pub rune_id: String,
-    pub name: String,
-    pub raw_name: String,
-    pub symbol: Option<char>,
-    pub divisibility: u8,
-    pub premine: u128,
-    pub terms: Option<Terms>,
-    pub burned: u128,
-    pub mint_count: u128, // validation for Terms::cap
-    pub timestamp: u32,
-    pub is_cenotapth: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Transaction {
-    pub tx_id: String,
-    // pub inputs: Vec<TXO>,
-    // pub outputs: Vec<TXO>,
-    pub is_artifact: bool,
-    pub is_runestone: bool,
-    pub is_cenotapth: bool,
-    pub cenotapth_messages: Option<String>,
-    pub timestamp: u32,
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Terms {
-    pub amount: Option<u128>,
-    pub cap: Option<u128>,
-    pub height_start: Option<u64>,
-    pub height_end: Option<u64>,
-    pub offset_start: Option<u64>,
-    pub offset_end: Option<u64>,
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TXO {
-    pub tx_id: String,
-    pub output_index: u32,
-    pub value: u64,
-    pub address: Option<String>,
-    // pub rune_transfers: Vec<RuneTransfer>,
-    pub is_unspent: bool,
-    pub spent_tx_id: Option<String>,
-    pub timestamp: u32,
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RuneTransfer {
-    pub tx_id: String,
-    pub output_index: u32,
-    pub rune_id: String,
-    pub amount: u128,
-    pub address: Option<String>,
-    pub is_unspent: bool,
-    pub timestamp: u32,
-}
-
-impl MockDb {
-    pub fn init() -> MockDb {
-        MockDb {
-            rune_entries: Vec::new(),
-            transactions: Vec::new(),
-            rune_transfers: Vec::new(),
-            txos: Vec::new(),
-            statistics: Statistics {
-                rune_count: 0,
-                block_height: 0,
-            },
-        }
-    }
-
-    pub fn get_runes_transfers_by_tx(
+    fn get_runes_transfers_by_tx(
         &mut self,
         tx_id: &str,
-        tx_index: u32,
-    ) -> Result<Vec<&mut RuneTransfer>, Error> {
+        output_index: u32,
+    ) -> Result<Vec<RuneTransfer>, Error> {
         Ok(self
             .rune_transfers
-            .iter_mut()
-            .filter(|rt| rt.tx_id == tx_id.to_string() && rt.output_index == tx_index)
-            // .cloned() // Change: Add cloned() to create a new iterator with cloned elements
+            .iter()
+            .filter(|&rt| rt.tx_id == tx_id.to_string() && rt.output_index == output_index)
+            .cloned() // Change: Add cloned() to create a new iterator with cloned elements
             .collect())
     }
 
-    pub fn get_rune_by_id(&mut self, rune_id: &str) -> Result<Option<&mut RuneEntry>, Error> {
+    fn get_rune_by_id(&mut self, rune_id: &str) -> Result<Option<&mut RuneEntry>, Error> {
         Ok(self
             .rune_entries
             .iter_mut()
             .find(|rune| rune.rune_id == rune_id))
     }
 
-    pub fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error> {
+    fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error> {
         if let Some(rune) = self.get_rune_by_id(rune_id).unwrap() {
             rune.mint_count += 1;
         }
         Ok(())
     }
-    pub fn increase_rune_entry_burned(&mut self, rune_id: &str, amount: u128) -> Result<(), Error> {
-        if let Some(mut rune) = self.get_rune_by_id(rune_id).unwrap() {
+
+    fn increase_rune_entry_burned(&mut self, rune_id: &str, amount: u128) -> Result<(), Error> {
+        if let Some(rune) = self.get_rune_by_id(rune_id).unwrap() {
             rune.burned += amount;
         }
         Ok(())
     }
 
-    pub fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<&RuneEntry>, Error> {
+    fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<&RuneEntry>, Error> {
         Ok(self.rune_entries.iter().find(|rune| rune.raw_name == name))
     }
 
-    pub fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
+    fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
         self.transactions.push(transaction);
         Ok(())
     }
 
-    pub fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error> {
+    fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error> {
         self.rune_entries.push(rune_entry);
+        self.increase_rune_count()?;
         Ok(())
     }
 
-    pub fn add_rune_transfer(&mut self, rune_transfer: RuneTransfer) -> Result<(), Error> {
+    fn add_rune_transfer(&mut self, rune_transfer: RuneTransfer) -> Result<(), Error> {
         self.rune_transfers.push(rune_transfer);
         Ok(())
     }
 
-    pub fn get_txo(&mut self, tx_id: &str, output_index: u32) -> Result<Option<&mut TXO>, Error> {
+    fn get_txo(&mut self, tx_id: &str, output_index: u32) -> Result<Option<&mut TXO>, Error> {
         Ok(self
             .txos
             .iter_mut()
             .find(|txo| txo.tx_id == tx_id && txo.output_index == output_index))
     }
 
-    pub fn mark_utxo_as_spent(
+    fn mark_utxo_as_spent(
         &mut self,
         tx_id: &str,
         output_index: u32,
@@ -159,20 +98,23 @@ impl MockDb {
             txo.spent_tx_id = Some(spent_tx_id.to_string());
         }
 
-        let mut rune_transfers = self.get_runes_transfers_by_tx(tx_id, output_index)?;
-        rune_transfers
+        self.rune_transfers
             .iter_mut()
-            .for_each(|rt| rt.is_unspent = false);
+            .filter(|rt| rt.tx_id == tx_id.to_string() && rt.output_index == output_index)
+            .for_each(|rt| {
+                rt.is_unspent = false;
+                rt.spent_tx_id = Some(spent_tx_id.to_string());
+            });
 
         Ok(())
     }
 
-    pub fn add_txo(&mut self, txo: TXO) -> Result<(), Error> {
+    fn add_txo(&mut self, txo: TXO) -> Result<(), Error> {
         self.txos.push(txo);
         Ok(())
     }
 
-    pub fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> u128 {
+    fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> u128 {
         self.rune_transfers
             .iter()
             .filter(|rt| {
@@ -182,27 +124,27 @@ impl MockDb {
             .sum()
     }
 
-    pub fn get_address_transfer(&self, address: &str) -> Vec<&RuneTransfer> {
+    fn get_address_transfer(&self, address: &str) -> Vec<&RuneTransfer> {
         self.rune_transfers
             .iter()
             .filter(|rt| rt.address == Some(address.to_string()))
             .collect()
     }
 
-    pub fn get_rune_count(&self) -> Result<u128, Error> {
+    fn get_rune_count(&self) -> Result<u128, Error> {
         Ok(self.statistics.rune_count)
     }
 
-    pub fn increase_rune_count(&mut self) -> Result<(), Error> {
+    fn increase_rune_count(&mut self) -> Result<(), Error> {
         self.statistics.rune_count += 1;
         Ok(())
     }
 
-    pub fn get_block_height(&self) -> Result<u64, Error> {
+    fn get_block_height(&self) -> Result<u64, Error> {
         Ok(self.statistics.block_height)
     }
 
-    pub fn increase_block_height(&mut self) -> Result<(), Error> {
+    fn increase_block_height(&mut self) -> Result<(), Error> {
         self.statistics.block_height += 1;
         Ok(())
     }
@@ -215,19 +157,19 @@ impl MockDb {
     //         .find(|rune| rune.etching_tx_id == etching_tx_id)
     // }
 
-    pub fn get_transaction(&self, tx_id: &str) -> Option<&Transaction> {
+    fn get_transaction(&self, tx_id: &str) -> Option<&Transaction> {
         self.transactions.iter().find(|tx| tx.tx_id == tx_id)
     }
 
-    pub fn get_rune_by_name(&self, name: &str) -> Option<&RuneEntry> {
+    fn get_rune_by_name(&self, name: &str) -> Option<&RuneEntry> {
         self.rune_entries.iter().find(|rune| rune.name == name)
     }
 
-    pub fn get_runes(&self) -> Result<&Vec<RuneEntry>, Error> {
+    fn get_runes(&self) -> Result<&Vec<RuneEntry>, Error> {
         Ok(&self.rune_entries)
     }
 
-    pub fn get_transactions(&self) -> &Vec<Transaction> {
+    fn get_transactions(&self) -> &Vec<Transaction> {
         &self.transactions
     }
 }

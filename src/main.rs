@@ -1,17 +1,17 @@
-use std::borrow::Borrow;
 
 use anyhow::Error;
-use bitcoin::Address;
 
 mod adapters;
 mod btc_rpc;
 mod lot;
 mod rune_updaters;
 mod runes;
-mod runes_decoder;
+mod utils;
 
 use std::fs::OpenOptions;
 use std::io::Write;
+use crate::adapters::db::Database;
+
 // async fn get_raw_transaction() -> Result<(), Error> {
 //     let mut script_pubkey: Vec<u8> = bitcoin::script::Builder::new()
 //         .push_opcode(bitcoin::opcodes::all::OP_RETURN)
@@ -206,9 +206,18 @@ async fn main() -> Result<(), Error> {
 
     println!("Runestone: {:?}", runestone);
 
-    let mut db: adapters::mock_db::MockDb = adapters::mock_db::MockDb::init();
+    let mut db: adapters::mock_db::MockDb = adapters::mock_db::MockDb {
+        rune_entries: Vec::new(),
+        transactions: Vec::new(),
+        rune_transfers: Vec::new(),
+        txos: Vec::new(),
+        statistics: adapters::db::Statistics {
+            rune_count: 0,
+            block_height: 0,
+        }
+    };
 
-    db.add_rune_entry(adapters::mock_db::RuneEntry {
+    db.add_rune_entry(adapters::db::RuneEntry {
         etching_tx_id: "e279cb8".to_string(),
         block_height: 1,
         rune_id: "1:2".to_string(),
@@ -217,7 +226,7 @@ async fn main() -> Result<(), Error> {
         symbol: Some('L'),
         divisibility: 18,
         premine: 100,
-        terms: Some(adapters::mock_db::Terms {
+        terms: Some(adapters::db::Terms {
             amount: Some(2),
             cap: Some(200),
             height_start: None,
@@ -229,6 +238,7 @@ async fn main() -> Result<(), Error> {
         mint_count: 0,
         timestamp: 0,
         is_cenotapth: false,
+        rune_number: 0,
     })?;
 
     println!("Rune entries: {:?}", db.get_runes()?);

@@ -1,14 +1,14 @@
-use std::borrow::Borrow;
+use crate::adapters::db::Database;
 
-use super::adapters::mock_db::{
-    MockDb as Database, RuneEntry, RuneTransfer, Terms, Transaction as DbTransaction, TXO,
-};
+use super::adapters::db::{RuneEntry, RuneTransfer, Terms, Transaction as DbTransaction, TXO};
+use super::adapters::mock_db::MockDb as Db;
 use super::btc_rpc;
 use super::lot::Lot;
 use super::runes::*;
+use super::utils;
 
 pub struct RuneUpdater {
-    database: Database,
+    database: Db,
     chain: Network,
     burned: HashMap<RuneId, Lot>,
     block_height: u32,
@@ -16,26 +16,32 @@ pub struct RuneUpdater {
 }
 
 impl RuneUpdater {
-    pub fn init(chain: Network, block_height: u32, block_time: u32) -> RuneUpdater {
+    pub fn init(database: Db, chain: Network, block_height: u32, block_time: u32) -> RuneUpdater {
         RuneUpdater {
-            database: Database::init(),
+            database,
             chain,
             burned: HashMap::new(),
             block_height,
             block_time,
         }
     }
-    pub async fn index_runes(&mut self, tx_index: u32, tx: &Transaction, txid: Txid) -> Result<()> {
+
+    pub async fn index_runes(
+        &mut self,
+        tx_index: u32,
+        tx: &Transaction,
+        tx_id: &str,
+    ) -> Result<()> {
         let artifact = Runestone::decipher(tx);
 
         let mut unallocated = self.unallocated(tx)?;
         let mut allocated: Vec<HashMap<RuneId, Lot>> = vec![HashMap::new(); tx.output.len()];
 
-        self.mark_txs_as_spent(tx, txid)?;
-        
+        self.mark_txs_as_spent(tx, tx_id)?;
+
         if let Some(artifact) = &artifact {
-            self.add_transaction(txid, &artifact)?;
-            self.add_txo(tx, txid)?;
+            self.add_transaction(tx_id, &artifact)?;
+            self.add_txo(tx, tx_id)?;
 
             if let Some(id) = artifact.mint() {
                 if let Some(amount) = self.mint(id)? {
@@ -124,7 +130,7 @@ impl RuneUpdater {
             }
 
             if let Some((id, rune)) = etched {
-                self.create_rune_entry(txid, artifact, id, rune)?;
+                self.create_rune_entry(tx_id, artifact, id, rune)?;
             }
         }
 
@@ -190,7 +196,7 @@ impl RuneUpdater {
             // Sort balances by id so tests can assert balances in a fixed order
             balances.sort();
 
-            self.add_rune_transfers(tx, txid, vout, balances)?;
+            self.add_rune_transfers(tx, tx_id, vout, balances)?;
         }
 
         // increment entries with burned runes
@@ -201,8 +207,8 @@ impl RuneUpdater {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result {
-        for (rune_id, burned) in &self.burned {
+    pub fn update(mut self) -> Result {
+        for (rune_id, burned) in self.burned {
             self.database
                 .increase_rune_entry_burned(&rune_id.to_string(), burned.n())?;
         }
@@ -210,25 +216,25 @@ impl RuneUpdater {
         Ok(())
     }
 
-    fn add_transaction(&mut self, txid: Txid, artifact: &Artifact) -> Result {
+    fn add_transaction(&mut self, tx_id: &str, artifact: &Artifact) -> Result {
         self.database.add_transaction(DbTransaction {
-            tx_id: txid.to_string(),
+            tx_id: tx_id.to_string(),
             is_artifact: true,
             // is_artifact: artifact.is_some(),
             is_runestone: if let Artifact::Runestone(_) = artifact {
-            // is_runestone: if let Some(Artifact::Runestone(_)) = artifact {
+                // is_runestone: if let Some(Artifact::Runestone(_)) = artifact {
                 true
             } else {
                 false
             },
             is_cenotapth: if let Artifact::Cenotaph(_) = artifact {
-            // is_cenotapth: if let Some(Artifact::Cenotaph(_)) = artifact {
+                // is_cenotapth: if let Some(Artifact::Cenotaph(_)) = artifact {
                 true
             } else {
                 false
             },
             cenotapth_messages: if let Artifact::Cenotaph(cenotaph) = artifact {
-            // cenotapth_messages: if let Some(Artifact::Cenotaph(cenotaph)) = artifact {
+                // cenotapth_messages: if let Some(Artifact::Cenotaph(cenotaph)) = artifact {
                 Some(
                     cenotaph
                         .flaws()
@@ -245,25 +251,19 @@ impl RuneUpdater {
         Ok(())
     }
 
-    fn add_txo(&mut self, tx: &Transaction, txid: Txid) -> Result<(), Error> {
+    fn add_txo(&mut self, tx: &Transaction, tx_id: &str) -> Result<(), Error> {
         for (vout, _) in tx.output.iter().enumerate() {
-            let txo = TXO {
-                tx_id: txid.to_string(),
+            self.database.add_txo(TXO {
+                tx_id: tx_id.to_string(),
                 output_index: vout as u32,
                 value: tx.output[vout].value,
-                address: if let Some(address) =
-                    Address::from_script(tx.output[vout].script_pubkey.as_script(), self.chain).ok()
-                {
-                    Some(address.to_string())
-                } else {
-                    None
-                },
+                address: utils::output_to_address(&tx.output[vout], self.chain),
+                address_lowercase: utils::output_to_address(&tx.output[vout], self.chain)
+                    .map(|s| s.to_lowercase()),
                 is_unspent: true,
                 spent_tx_id: None,
                 timestamp: self.block_time,
-            };
-    
-            self.database.add_txo(txo)?;
+            })?;
         }
         Ok(())
     }
@@ -271,24 +271,21 @@ impl RuneUpdater {
     fn add_rune_transfers(
         &mut self,
         tx: &Transaction,
-        txid: Txid,
+        tx_id: &str,
         vout: usize,
         balances: Vec<(RuneId, Lot)>,
     ) -> Result {
         for (id, balance) in balances {
             self.database.add_rune_transfer(RuneTransfer {
-                tx_id: txid.to_string(),
+                tx_id: tx_id.to_string(),
                 output_index: vout as u32,
                 rune_id: id.to_string(),
                 amount: balance.n(),
-                address: if let Some(address) =
-                    Address::from_script(tx.output[vout].script_pubkey.as_script(), self.chain).ok()
-                {
-                    Some(address.to_string())
-                } else {
-                    None
-                },
+                address: utils::output_to_address(&tx.output[vout], self.chain),
+                address_lowercase: utils::output_to_address(&tx.output[vout], self.chain)
+                    .map(|s| s.to_lowercase()),
                 is_unspent: true,
+                spent_tx_id: None,
                 timestamp: self.block_time,
             })?;
         }
@@ -298,14 +295,16 @@ impl RuneUpdater {
 
     fn create_rune_entry(
         &mut self,
-        txid: Txid,
+        tx_id: &str,
         artifact: &Artifact,
         id: RuneId,
         rune: Rune,
     ) -> Result {
+        let rune_count = self.database.get_rune_count()? + 1;
+
         let rune_entry = match artifact {
             Artifact::Cenotaph(_) => RuneEntry {
-                etching_tx_id: txid.to_string(),
+                etching_tx_id: tx_id.to_string(),
                 block_height: id.block,
                 rune_id: id.to_string(),
                 name: rune.to_string(),
@@ -315,10 +314,10 @@ impl RuneUpdater {
                 divisibility: 0,
                 terms: None,
                 mint_count: 0,
-                // number,
                 premine: 0,
                 timestamp: self.block_time,
                 is_cenotapth: true,
+                rune_number: rune_count,
             },
             Artifact::Runestone(Runestone { etching, .. }) => {
                 let Etching {
@@ -331,7 +330,7 @@ impl RuneUpdater {
                 } = etching.unwrap();
 
                 RuneEntry {
-                    etching_tx_id: txid.to_string(),
+                    etching_tx_id: tx_id.to_string(),
                     block_height: id.block,
                     rune_id: id.to_string(),
                     name: SpacedRune {
@@ -359,9 +358,9 @@ impl RuneUpdater {
                     },
                     burned: 0,
                     mint_count: 0,
-                    // number,
                     timestamp: self.block_time,
                     is_cenotapth: false,
+                    rune_number: rune_count,
                 }
             }
         };
@@ -431,7 +430,8 @@ impl RuneUpdater {
             return Ok(None);
         };
 
-        self.database.update_rune_entry_mint_count(&id.to_string())?;
+        self.database
+            .update_rune_entry_mint_count(&id.to_string())?;
 
         Ok(Some(Lot(amount)))
     }
@@ -443,7 +443,7 @@ impl RuneUpdater {
         // increment unallocated runes with the runes in tx inputs
         for input in &tx.input {
             let rune_transfers = self.database.get_runes_transfers_by_tx(
-                &input.previous_output.txid.to_string(),
+                &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
             )?;
 
@@ -457,12 +457,12 @@ impl RuneUpdater {
         Ok(unallocated)
     }
 
-    fn mark_txs_as_spent(&mut self, tx: &Transaction, txid: Txid) -> Result<()> {
+    fn mark_txs_as_spent(&mut self, tx: &Transaction, tx_id: &str) -> Result<()> {
         for input in &tx.input {
             self.database.mark_utxo_as_spent(
-                &input.previous_output.txid.to_string(),
+                &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
-                &txid.to_string(),
+                tx_id,
             )?;
         }
 
@@ -522,7 +522,7 @@ impl RuneUpdater {
 }
 
 pub fn mintable(rune_entry: &RuneEntry, block_height: u64) -> Result<u128, MintError> {
-    let Some(terms) = rune_entry.terms.borrow() else {
+    let Some(terms) = rune_entry.terms.clone() else {
         return Err(MintError::Unmintable);
     };
 
@@ -548,7 +548,7 @@ pub fn mintable(rune_entry: &RuneEntry, block_height: u64) -> Result<u128, MintE
 }
 
 pub fn mint_start(rune_entry: &RuneEntry) -> Option<u64> {
-    let terms = rune_entry.terms.as_ref()?;
+    let terms = rune_entry.terms.clone()?;
 
     let relative = terms
         .offset_start
@@ -565,7 +565,7 @@ pub fn mint_start(rune_entry: &RuneEntry) -> Option<u64> {
 }
 
 pub fn mint_end(rune_entry: &RuneEntry) -> Option<u64> {
-    let terms = rune_entry.terms.as_ref()?;
+    let terms = rune_entry.terms.clone()?;
 
     let relative = terms
         .offset_end
