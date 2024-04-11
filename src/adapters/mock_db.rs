@@ -9,24 +9,20 @@ pub struct MockDb {
     pub statistics: Statistics,
 }
 
-impl Database for MockDb {
-    // fn init() -> Result<(), Error> {
-    //     Ok(())
-    // }
-    // fn init() -> MockDb {
-    //     MockDb {
-    //         rune_entries: Vec::new(),
-    //         transactions: Vec::new(),
-    //         rune_transfers: Vec::new(),
-    //         txos: Vec::new(),
-    //         statistics: Statistics {
-    //             rune_count: 0,
-    //             block_height: 0,
-    //         },
-    //     }
-    // }
+impl MockDb {
+    fn init() -> MockDb {
+        MockDb {
+            rune_entries: Vec::new(),
+            transactions: Vec::new(),
+            rune_transfers: Vec::new(),
+            txos: Vec::new(),
+            statistics: Statistics { block_height: 0 },
+        }
+    }
+}
 
-    fn get_runes_transfers_by_tx(
+impl Database for MockDb {
+    fn get_runes_transfers_by_output_index(
         &mut self,
         tx_id: &str,
         output_index: u32,
@@ -39,29 +35,42 @@ impl Database for MockDb {
             .collect())
     }
 
-    fn get_rune_by_id(&mut self, rune_id: &str) -> Result<Option<&mut RuneEntry>, Error> {
+    fn get_rune_by_id(&self, rune_id: &str) -> Result<Option<RuneEntry>, Error> {
         Ok(self
             .rune_entries
-            .iter_mut()
+            .iter()
+            .cloned()
             .find(|rune| rune.rune_id == rune_id))
     }
 
     fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error> {
-        if let Some(rune) = self.get_rune_by_id(rune_id).unwrap() {
+        if let Some(rune) = self
+            .rune_entries
+            .iter_mut()
+            .find(|rune| rune.rune_id == rune_id)
+        {
             rune.mint_count += 1;
         }
         Ok(())
     }
 
     fn increase_rune_entry_burned(&mut self, rune_id: &str, amount: u128) -> Result<(), Error> {
-        if let Some(rune) = self.get_rune_by_id(rune_id).unwrap() {
+        if let Some(rune) = self
+            .rune_entries
+            .iter_mut()
+            .find(|rune| rune.rune_id == rune_id)
+        {
             rune.burned += amount;
         }
         Ok(())
     }
 
-    fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<&RuneEntry>, Error> {
-        Ok(self.rune_entries.iter().find(|rune| rune.raw_name == name))
+    fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<RuneEntry>, Error> {
+        Ok(self
+            .rune_entries
+            .iter()
+            .cloned()
+            .find(|rune| rune.raw_name == name))
     }
 
     fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
@@ -71,7 +80,6 @@ impl Database for MockDb {
 
     fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error> {
         self.rune_entries.push(rune_entry);
-        self.increase_rune_count()?;
         Ok(())
     }
 
@@ -80,10 +88,11 @@ impl Database for MockDb {
         Ok(())
     }
 
-    fn get_txo(&mut self, tx_id: &str, output_index: u32) -> Result<Option<&mut TXO>, Error> {
+    fn get_txo(&mut self, tx_id: &str, output_index: u32) -> Result<Option<TXO>, Error> {
         Ok(self
             .txos
-            .iter_mut()
+            .iter()
+            .cloned()
             .find(|txo| txo.tx_id == tx_id && txo.output_index == output_index))
     }
 
@@ -93,10 +102,13 @@ impl Database for MockDb {
         output_index: u32,
         spent_tx_id: &str,
     ) -> Result<(), Error> {
-        if let Some(txo) = self.get_txo(tx_id, output_index)? {
-            txo.is_unspent = false;
-            txo.spent_tx_id = Some(spent_tx_id.to_string());
-        }
+        self.txos
+            .iter_mut()
+            .filter(|txo| txo.tx_id == tx_id && txo.output_index == output_index)
+            .for_each(|txo| {
+                txo.is_unspent = false;
+                txo.spent_tx_id = Some(spent_tx_id.to_string());
+            });
 
         self.rune_transfers
             .iter_mut()
@@ -114,30 +126,30 @@ impl Database for MockDb {
         Ok(())
     }
 
-    fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> u128 {
-        self.rune_transfers
+    fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> Result<u128, Error> {
+        Ok(self
+            .rune_transfers
             .iter()
             .filter(|rt| {
-                rt.address == Some(address.to_string()) && rt.rune_id == rune_id && rt.is_unspent
+                rt.address_lowercase == Some(address.to_string().to_lowercase())
+                    && rt.rune_id == rune_id
+                    && rt.is_unspent
             })
             .map(|rt| rt.amount)
-            .sum()
+            .sum())
     }
 
-    fn get_address_transfer(&self, address: &str) -> Vec<&RuneTransfer> {
-        self.rune_transfers
+    fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error> {
+        Ok(self
+            .rune_transfers
             .iter()
-            .filter(|rt| rt.address == Some(address.to_string()))
-            .collect()
+            .cloned()
+            .filter(|rt| rt.address_lowercase == Some(address.to_lowercase().to_string()))
+            .collect())
     }
 
     fn get_rune_count(&self) -> Result<u128, Error> {
-        Ok(self.statistics.rune_count)
-    }
-
-    fn increase_rune_count(&mut self) -> Result<(), Error> {
-        self.statistics.rune_count += 1;
-        Ok(())
+        Ok(self.rune_entries.len() as u128)
     }
 
     fn get_block_height(&self) -> Result<u64, Error> {
@@ -149,27 +161,15 @@ impl Database for MockDb {
         Ok(())
     }
 
-    // pub fn get_address_transfers
-
-    // pub fn get_rune(&self, etching_tx_id: &str) -> Option<&RuneEntry> {
-    //     self.rune_entries
-    //         .iter()
-    //         .find(|rune| rune.etching_tx_id == etching_tx_id)
-    // }
-
-    fn get_transaction(&self, tx_id: &str) -> Option<&Transaction> {
-        self.transactions.iter().find(|tx| tx.tx_id == tx_id)
+    fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error> {
+        Ok(self
+            .transactions
+            .iter()
+            .cloned()
+            .find(|tx| tx.tx_id == tx_id))
     }
 
-    fn get_rune_by_name(&self, name: &str) -> Option<&RuneEntry> {
-        self.rune_entries.iter().find(|rune| rune.name == name)
-    }
-
-    fn get_runes(&self) -> Result<&Vec<RuneEntry>, Error> {
-        Ok(&self.rune_entries)
-    }
-
-    fn get_transactions(&self) -> &Vec<Transaction> {
-        &self.transactions
+    fn get_runes(&self) -> Result<Vec<RuneEntry>, Error> {
+        Ok(self.rune_entries.clone())
     }
 }

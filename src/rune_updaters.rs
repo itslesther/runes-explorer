@@ -2,17 +2,18 @@ use crate::adapters::db::Database;
 
 use super::adapters::db::{RuneEntry, RuneTransfer, Terms, Transaction as DbTransaction, TXO};
 use super::adapters::mock_db::MockDb as Db;
+// use super::adapters::sqlite::SQLite as Db;
 use super::btc_rpc;
 use super::lot::Lot;
 use super::runes::*;
 use super::utils;
 
 pub struct RuneUpdater {
-    database: Db,
-    chain: Network,
-    burned: HashMap<RuneId, Lot>,
-    block_height: u32,
-    block_time: u32,
+    pub database: Db,
+    pub chain: Network,
+    pub burned: HashMap<RuneId, Lot>,
+    pub block_height: u32,
+    pub block_time: u32,
 }
 
 impl RuneUpdater {
@@ -256,7 +257,7 @@ impl RuneUpdater {
             self.database.add_txo(TXO {
                 tx_id: tx_id.to_string(),
                 output_index: vout as u32,
-                value: tx.output[vout].value,
+                value: tx.output[vout].value as u128,
                 address: utils::output_to_address(&tx.output[vout], self.chain),
                 address_lowercase: utils::output_to_address(&tx.output[vout], self.chain)
                     .map(|s| s.to_lowercase()),
@@ -426,7 +427,7 @@ impl RuneUpdater {
             return Ok(None);
         };
 
-        let Ok(amount) = mintable(rune_entry, self.block_height.into()) else {
+        let Ok(amount) = mintable(&rune_entry, self.block_height.into()) else {
             return Ok(None);
         };
 
@@ -442,7 +443,7 @@ impl RuneUpdater {
 
         // increment unallocated runes with the runes in tx inputs
         for input in &tx.input {
-            let rune_transfers = self.database.get_runes_transfers_by_tx(
+            let rune_transfers = self.database.get_runes_transfers_by_output_index(
                 &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
             )?;
