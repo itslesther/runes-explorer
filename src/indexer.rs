@@ -44,26 +44,23 @@ impl<'a> Indexer {
             return Ok(());
         }
 
-        println!("Start block height: {}", start_block_height);
-        println!("End block height: {}", end_block_height);
-
         for block_height in start_block_height..=end_block_height {
+            let percentage = ((block_height - start_block_height) as f32
+                / (end_block_height - start_block_height) as f32)
+                * 100.0;
+
             log(&format!(
-                "\nIndexing block: {}. {}% completed",
+                "Indexing block: {}. {}",
                 block_height,
-                ((block_height - start_block_height) as f32
-                    / (end_block_height - start_block_height) as f32)
-                    * 100.0
+                format!("{:.1$}% completed", percentage, 2)
             ))?;
 
             let block = btc_rpc::get_block_by_height(block_height).await?;
 
-            log(&format!(
-                "Block Transaction count: {:?}",
-                block.txdata.len()
-            ))?;
-
-            // let txs = block.tx;
+            // log(&format!(
+            //     "Block Transaction count: {:?}",
+            //     block.txdata.len()
+            // ))?;
 
             let mut rune_updater = RuneUpdater {
                 database,
@@ -87,7 +84,7 @@ impl<'a> Indexer {
             database.set_block_height(block_height.into())?;
         }
 
-        log("\nIndexing completed")?;
+        log("Indexing completed")?;
 
         Ok(())
     }

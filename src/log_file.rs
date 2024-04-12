@@ -1,7 +1,10 @@
 use anyhow::Error;
+use chrono;
+use colored::Colorize;
 use std::fs::OpenOptions;
 use std::io::Write;
-// #[derive(Debug, Clone, Copy)]
+
+#[derive(Debug)]
 pub struct LogFile {
     data_file: std::fs::File,
 }
@@ -34,10 +37,14 @@ impl LogFile {
 pub fn log(data: &str) -> Result<(), Error> {
     let mut data_file = OpenOptions::new().append(true).open("indexer.log")?;
 
-    data_file.write(&format!("{}\n", data).as_bytes())?;
+    data_file.write(&format!("[{}] {}\n", chrono::offset::Utc::now(), data).as_bytes())?;
 
     data_file.flush()?;
 
-    println!("{}", data);
+    println!(
+        "[{}] {}",
+        chrono::offset::Utc::now().to_string().green().bold(),
+        data
+    );
     Ok(())
 }
