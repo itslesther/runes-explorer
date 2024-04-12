@@ -1,7 +1,7 @@
 use super::db::*;
+use crate::log_file::log;
 use anyhow::Error;
 use rusqlite::{params, Connection, Result};
-use crate::log_file::log;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SQLite<'a> {
@@ -32,6 +32,7 @@ impl<'a> SQLite<'a> {
             mint_count TEXT NOT NULL,
             timestamp INTEGER NOT NULL,
             is_cenotapth BOOLEAN,
+            cenotapth_messages TEXT,
             rune_number TEXT NOT NULL
         )",
             (), // empty list of parameters.
@@ -180,6 +181,7 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
+                cenotapth_messages: row.get("cenotapth_messages")?,
                 rune_number: rune_number.parse().unwrap(),
             })
         })?;
@@ -297,6 +299,7 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
+                cenotapth_messages: row.get("cenotapth_messages")?,
                 rune_number: rune_number.parse().unwrap(),
             })
         })?;
@@ -326,7 +329,7 @@ impl<'a> Database for SQLite<'a> {
 
     fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error> {
         self.conn.execute(
-            "INSERT INTO rune_entries (etching_tx_id, block_height, rune_id, name, raw_name, symbol, divisibility, premine, burned, mint_count, timestamp, is_cenotapth, rune_number) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO rune_entries (etching_tx_id, block_height, rune_id, name, raw_name, symbol, divisibility, premine, burned, mint_count, timestamp, is_cenotapth, cenotapth_messages, rune_number) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 rune_entry.etching_tx_id,
                 rune_entry.block_height,
@@ -340,6 +343,7 @@ impl<'a> Database for SQLite<'a> {
                 rune_entry.mint_count.to_string(),
                 rune_entry.timestamp,
                 rune_entry.is_cenotapth,
+                rune_entry.cenotapth_messages,
                 rune_entry.rune_number.to_string()
             ],
         )?;
@@ -380,7 +384,10 @@ impl<'a> Database for SQLite<'a> {
         ])?;
 
         // println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
-        log(&format!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id))?;
+        log(&format!(
+            "Rune transfer for rune {} added: {:?}",
+            rune_transfer.rune_id, rune_transfer.tx_id
+        ))?;
 
         Ok(())
     }
@@ -448,7 +455,10 @@ impl<'a> Database for SQLite<'a> {
         )?;
 
         // println!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value);
-        log(&format!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value))?;
+        log(&format!(
+            "TXO added: {}:{} -> {}",
+            txo.tx_id, txo.output_index, txo.value
+        ))?;
 
         Ok(())
     }
@@ -587,6 +597,7 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
+                cenotapth_messages: row.get("cenotapth_messages")?,
                 rune_number: rune_number.parse().unwrap(),
             })
         })?;
@@ -594,11 +605,29 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn set_block_height(&mut self, block_height: u64) -> Result<(), Error> {
-        self.conn.execute(
-            "INSERT INTO statistics (block_height) VALUES (?1)",
-            params![block_height],
-        )?;
+    fn set_block_height(&mut self, new_block_height: u64) -> Result<(), Error> {
+        // let block_height = self.get_block_height()?;
+
+        let mut stmt = self.conn.prepare("SELECT block_height FROM statistics")?;
+        let result_iter = stmt.query_map([], |row| {
+            let block_height: u64 = row.get("block_height")?;
+
+            Ok(block_height)
+        })?;
+
+        let block_height = result_iter.map(|r| r.unwrap()).next();
+
+        if let Some(_) = block_height {
+            self.conn.execute(
+                "UPDATE statistics SET block_height = ?1 WHERE TRUE",
+                params![new_block_height],
+            )?;
+        } else {
+            self.conn.execute(
+                "INSERT INTO statistics (block_height) VALUES (?1)",
+                params![new_block_height],
+            )?;
+        }
 
         Ok(())
     }

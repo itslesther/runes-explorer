@@ -303,7 +303,7 @@ impl<'a> RuneUpdater<'a> {
         let rune_count = self.database.get_rune_count()? + 1;
 
         let rune_entry = match artifact {
-            Artifact::Cenotaph(_) => RuneEntry {
+            Artifact::Cenotaph(cenotaph) => RuneEntry {
                 etching_tx_id: tx_id.to_string(),
                 block_height: id.block,
                 rune_id: id.to_string(),
@@ -317,6 +317,14 @@ impl<'a> RuneUpdater<'a> {
                 premine: 0,
                 timestamp: self.block_time,
                 is_cenotapth: true,
+                cenotapth_messages: Some(
+                    cenotaph
+                        .flaws()
+                        .iter()
+                        .map(|flaw| flaw.to_string())
+                        .collect::<Vec<String>>()
+                        .join(","),
+                ),
                 rune_number: rune_count,
             },
             Artifact::Runestone(Runestone { etching, .. }) => {
@@ -360,6 +368,7 @@ impl<'a> RuneUpdater<'a> {
                     mint_count: 0,
                     timestamp: self.block_time,
                     is_cenotapth: false,
+                    cenotapth_messages: None,
                     rune_number: rune_count,
                 }
             }

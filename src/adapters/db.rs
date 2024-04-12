@@ -21,6 +21,7 @@ pub struct RuneEntry {
     pub mint_count: u128, // validation for Terms::cap
     pub timestamp: u32,
     pub is_cenotapth: bool,
+    pub cenotapth_messages: Option<String>,
     pub rune_number: u128,
 }
 
