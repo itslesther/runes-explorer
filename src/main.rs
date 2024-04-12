@@ -8,9 +8,9 @@ mod rune_updaters;
 mod runes;
 mod utils;
 mod indexer;
+mod log_file;
 
-use std::fs::OpenOptions;
-use std::io::Write;
+
 use crate::adapters::db::Database;
 use indexer::Indexer;
 use bitcoin::network::constants::Network;
@@ -115,11 +115,13 @@ use bitcoin::network::constants::Network;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let indexer = Indexer {
+    let mut indexer = Indexer {
         chain: Network::Bitcoin,
+        // log_file: &log_file::LogFile::new(),
     };
+
     indexer.index_blocks().await?;
-    println!("Indexing complete");
+    println!("\nIndexing complete");
 
     // // let tx = btc_rpc::get_transaction(
     // //     "e279cb8e09983e63117f7879f2393e3fbc1d132f5c3c8f4adae3bce7799556c4",

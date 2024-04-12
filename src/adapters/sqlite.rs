@@ -1,3 +1,5 @@
+use crate::log_file::LogFile;
+
 use super::db::*;
 use anyhow::Error;
 use rusqlite::{params, Connection, Result};
@@ -5,6 +7,7 @@ use rusqlite::{params, Connection, Result};
 #[derive(Debug, Clone, Copy)]
 pub struct SQLite<'a> {
     pub conn: &'a Connection,
+    // pub log_file: LogFile,
 }
 
 impl<'a> SQLite<'a> {

@@ -6,6 +6,8 @@ use bitcoin::network::constants::Network;
 
 use anyhow::Error;
 use rusqlite::Connection;
+use super::log_file::LogFile;
+ 
 
 pub struct Indexer {
     pub chain: Network,
