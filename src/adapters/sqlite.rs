@@ -1,8 +1,7 @@
-use crate::log_file::LogFile;
-
 use super::db::*;
 use anyhow::Error;
 use rusqlite::{params, Connection, Result};
+use crate::log_file::log;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SQLite<'a> {
@@ -11,6 +10,10 @@ pub struct SQLite<'a> {
 }
 
 impl<'a> SQLite<'a> {
+    // pub fn init(conn: &'a Connection) -> SQLite<'a> {
+    //     // SQLite { conn, log_file: LogFile::new() }
+    //     SQLite { conn }
+    // }
     pub fn init_tables(&self) -> Result<(), Error> {
         // let conn = &Connection::open("./runes.db")?;
         // let conn = Connection::open_in_memory()?;
@@ -83,7 +86,6 @@ impl<'a> SQLite<'a> {
             address_lowercase TEXT,
             is_unspent BOOLEAN,
             spent_tx_id TEXT,
-            spent_tx_id TEXT,
             timestamp INTEGER
       )",
             (), // empty list of parameters.
@@ -96,7 +98,8 @@ impl<'a> SQLite<'a> {
             (), // empty list of parameters.
         )?;
 
-        println!("Tables initialized");
+        // println!("Tables initialized");
+        log("Tables initialized")?;
 
         Ok(())
     }
@@ -204,10 +207,14 @@ impl<'a> Database for SQLite<'a> {
             params![new_mint_count, rune_id],
         )?;
 
-        println!(
+        // println!(
+        //     "Mint count for rune id {} updated to: {}",
+        //     new_mint_count, rune_id
+        // );
+        log(&format!(
             "Mint count for rune id {} updated to: {}",
             new_mint_count, rune_id
-        );
+        ))?;
 
         Ok(())
     }
@@ -231,10 +238,14 @@ impl<'a> Database for SQLite<'a> {
             params![new_burned, rune_id],
         )?;
 
-        println!(
+        // println!(
+        //     "Burned amount for rune id {} updated to: {}",
+        //     new_burned, rune_id
+        // );
+        log(&format!(
             "Burned amount for rune id {} updated to: {}",
             new_burned, rune_id
-        );
+        ))?;
 
         Ok(())
     }
@@ -307,7 +318,8 @@ impl<'a> Database for SQLite<'a> {
             ],
         )?;
 
-        println!("Transaction added: {:?}", transaction.tx_id);
+        // println!("Transaction added: {:?}", transaction.tx_id);
+        log(&format!("Transaction added: {:?}", transaction.tx_id))?;
 
         Ok(())
     }
@@ -347,7 +359,8 @@ impl<'a> Database for SQLite<'a> {
             )?;
         }
 
-        println!("Rune entry added: {:?}", rune_entry.rune_id);
+        // println!("Rune entry added: {:?}", rune_entry.rune_id);
+        log(&format!("Rune entry added: {:?}", rune_entry.rune_id))?;
 
         Ok(())
     }
@@ -366,7 +379,8 @@ impl<'a> Database for SQLite<'a> {
             rune_transfer.timestamp
         ])?;
 
-        println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
+        // println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
+        log(&format!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id))?;
 
         Ok(())
     }
@@ -412,7 +426,8 @@ impl<'a> Database for SQLite<'a> {
             params![false, spent_tx_id, tx_id, output_index],
         )?;
 
-        println!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id);
+        // println!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id);
+        // log(&format!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id))?;
 
         Ok(())
     }
@@ -432,7 +447,8 @@ impl<'a> Database for SQLite<'a> {
             ],
         )?;
 
-        println!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value);
+        // println!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value);
+        log(&format!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value))?;
 
         Ok(())
     }

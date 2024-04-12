@@ -1,19 +1,17 @@
-
 use anyhow::Error;
 
 mod adapters;
 mod btc_rpc;
+mod indexer;
+mod log_file;
 mod lot;
 mod rune_updaters;
 mod runes;
 mod utils;
-mod indexer;
-mod log_file;
 
-
-use crate::adapters::db::Database;
-use indexer::Indexer;
+// use crate::adapters::db::Database;
 use bitcoin::network::constants::Network;
+use indexer::Indexer;
 
 // async fn get_raw_transaction() -> Result<(), Error> {
 //     let mut script_pubkey: Vec<u8> = bitcoin::script::Builder::new()
@@ -115,13 +113,11 @@ use bitcoin::network::constants::Network;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let mut indexer = Indexer {
+    let indexer = Indexer {
         chain: Network::Bitcoin,
-        // log_file: &log_file::LogFile::new(),
     };
 
     indexer.index_blocks().await?;
-    println!("\nIndexing complete");
 
     // // let tx = btc_rpc::get_transaction(
     // //     "e279cb8e09983e63117f7879f2393e3fbc1d132f5c3c8f4adae3bce7799556c4",
