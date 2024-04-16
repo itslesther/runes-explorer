@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::db::*;
 use anyhow::Error;
 
@@ -137,6 +139,18 @@ impl Database for MockDb {
             })
             .map(|rt| rt.amount)
             .sum())
+    }
+
+    fn get_address_balance_list(&self, address: &str) -> Result<HashMap<String, u128>, Error> {
+        let mut balance_list: HashMap<String, u128> = HashMap::new();
+
+        for rt in self.rune_transfers.iter() {
+            if rt.address_lowercase == Some(address.to_string().to_lowercase()) && rt.is_unspent {
+                *balance_list.entry(rt.rune_id.clone()).or_default() += rt.amount;
+            }
+        }
+
+        Ok(balance_list)
     }
 
     fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error> {

@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+
 use super::db::*;
 use crate::log_file::log;
 use anyhow::Error;
 use rusqlite::{params, Connection, Result};
+// use sqlx::{self, FromRow};
+// use sqlx::sqlite;
+// use sqlx::sqlite;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SQLite<'a> {
@@ -21,7 +26,7 @@ impl<'a> SQLite<'a> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_entries (
             etching_tx_id TEXT NOT NULL,
-            block_height INTEGER,
+            block_height INTEGER NOT NULL,
             rune_id TEXT NOT NULL,
             name TEXT NOT NULL,
             raw_name TEXT NOT NULL,
@@ -54,6 +59,7 @@ impl<'a> SQLite<'a> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS transactions (
             tx_id TEXT PRIMARY KEY,
+            block_height INTEGER NOT NULL,
             is_artifact BOOLEAN,
             is_runestone BOOLEAN,
             is_cenotapth BOOLEAN,
@@ -66,7 +72,8 @@ impl<'a> SQLite<'a> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_transfers (
             tx_id TEXT NOT NULL,
-            output_index INTEGER,
+            output_index INTEGER NOT NULL,
+            block_height INTEGER NOT NULL,
             rune_id TEXT NOT NULL,
             amount TEXT NOT NULL,
             address TEXT,
@@ -81,7 +88,8 @@ impl<'a> SQLite<'a> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS txos (
             tx_id TEXT NOT NULL,
-            output_index INTEGER,
+            output_index INTEGER NOT NULL,
+            block_height INTEGER NOT NULL,
             value TEXT NOT NULL,
             address TEXT,
             address_lowercase TEXT,
@@ -129,6 +137,7 @@ impl<'a> Database for SQLite<'a> {
                 is_unspent: row.get("is_unspent")?,
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
+                block_height: row.get("block_height")?,
             })
         })?;
 
@@ -215,7 +224,7 @@ impl<'a> Database for SQLite<'a> {
         // );
         log(&format!(
             "Mint count for rune id {} updated to: {}",
-            new_mint_count, rune_id
+            rune_id, new_mint_count
         ))?;
 
         Ok(())
@@ -310,14 +319,15 @@ impl<'a> Database for SQLite<'a> {
 
     fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
         self.conn.execute(
-            "INSERT INTO transactions (tx_id, is_artifact, is_runestone, is_cenotapth, cenotapth_messages, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO transactions (tx_id, is_artifact, is_runestone, is_cenotapth, cenotapth_messages, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 transaction.tx_id,
                 transaction.is_artifact,
                 transaction.is_runestone,
                 transaction.is_cenotapth,
                 transaction.cenotapth_messages,
-                transaction.timestamp
+                transaction.timestamp,
+                transaction.block_height
             ],
         )?;
 
@@ -370,7 +380,7 @@ impl<'a> Database for SQLite<'a> {
     }
 
     fn add_rune_transfer(&mut self, rune_transfer: RuneTransfer) -> Result<(), Error> {
-        self.conn.execute("INSERT INTO rune_transfers (tx_id, output_index, rune_id, amount, address, address_lowercase, is_unspent, spent_tx_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        self.conn.execute("INSERT INTO rune_transfers (tx_id, output_index, rune_id, amount, address, address_lowercase, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             rune_transfer.tx_id,
             rune_transfer.output_index,
@@ -380,7 +390,8 @@ impl<'a> Database for SQLite<'a> {
             rune_transfer.address_lowercase,
             rune_transfer.is_unspent,
             rune_transfer.spent_tx_id,
-            rune_transfer.timestamp
+            rune_transfer.timestamp,
+            rune_transfer.block_height
         ])?;
 
         // println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
@@ -409,6 +420,7 @@ impl<'a> Database for SQLite<'a> {
                 is_unspent: row.get("is_unspent")?,
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
+                block_height: row.get("block_height")?,
             })
         })?;
 
@@ -441,7 +453,7 @@ impl<'a> Database for SQLite<'a> {
 
     fn add_txo(&mut self, txo: TXO) -> Result<(), Error> {
         self.conn.execute(
-            "INSERT INTO txos (tx_id, output_index, value, address, address_lowercase, is_unspent, spent_tx_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO txos (tx_id, output_index, value, address, address_lowercase, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 txo.tx_id,
                 txo.output_index,
@@ -450,7 +462,8 @@ impl<'a> Database for SQLite<'a> {
                 txo.address_lowercase,
                 txo.is_unspent,
                 txo.spent_tx_id,
-                txo.timestamp
+                txo.timestamp,
+                txo.block_height
             ],
         )?;
 
@@ -472,10 +485,32 @@ impl<'a> Database for SQLite<'a> {
             stmt.query_map(params![address.to_lowercase(), rune_id, true], |row| {
                 let amount: String = row.get("amount")?;
 
-                Ok(amount.parse::<u128>().unwrap())
+                Ok(amount.parse::<u128>().unwrap_or_default())
             })?;
 
         Ok(result_iter.map(|r| r.unwrap()).sum())
+    }
+
+    fn get_address_balance_list(&self, address: &str) -> Result<HashMap<String, u128>, Error> {
+        let mut stmt = self
+        .conn
+        .prepare("SELECT rune_id, amount FROM rune_transfers WHERE address_lowercase = ?1 AND is_unspent = ?2")?;
+
+        let result_iter = stmt.query_map(params![address.to_lowercase(), true], |row| {
+            let rune_id: String = row.get("rune_id")?;
+            let amount: String = row.get("amount")?;
+
+            Ok((rune_id, amount.parse::<u128>().unwrap_or_default()))
+        })?;
+
+        let mut balance_list: HashMap<String, u128> = HashMap::new();
+
+        for balance in result_iter {
+            let (rune_id, amount) = balance.unwrap();
+            *balance_list.entry(rune_id).or_default() +=amount;
+        }
+
+        Ok(balance_list)
     }
 
     fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error> {
@@ -497,6 +532,7 @@ impl<'a> Database for SQLite<'a> {
                     is_unspent: row.get("is_unspent")?,
                     spent_tx_id: row.get("spent_tx_id")?,
                     timestamp: row.get("timestamp")?,
+                    block_height: row.get("block_height")?,
                 })
             })
             .unwrap();
@@ -543,6 +579,7 @@ impl<'a> Database for SQLite<'a> {
                     is_cenotapth: row.get("is_cenotapth")?,
                     cenotapth_messages: row.get("cenotapth_messages")?,
                     timestamp: row.get("timestamp")?,
+                    block_height: row.get("block_height")?,
                 })
             })
             .unwrap();

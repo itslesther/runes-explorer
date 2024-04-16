@@ -7,117 +7,93 @@ mod log_file;
 mod lot;
 mod rune_updaters;
 mod runes;
+mod server;
 mod utils;
 
-// use crate::adapters::db::Database;
+use actix_web::{get, web::Data, App, HttpResponse, HttpServer, Responder};
+use adapters::db;
 use bitcoin::network::constants::Network;
 use indexer::Indexer;
+use r2d2::Pool;
+use server::{schemas, services};
 
-// async fn get_raw_transaction() -> Result<(), Error> {
-//     let mut script_pubkey: Vec<u8> = bitcoin::script::Builder::new()
-//         .push_opcode(bitcoin::opcodes::all::OP_RETURN)
-//         .push_opcode(Runestone::MAGIC_NUMBER)
-//         .into_script()
-//         .into_bytes();
+use r2d2_sqlite::SqliteConnectionManager;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
-//     script_pubkey.push(bitcoin::opcodes::all::OP_PUSHBYTES_4.to_u8());
+struct AppState {
+    pub pool: Pool<SqliteConnectionManager>,
+}
 
-//     let some_runestone = Runestone::from_transaction(&bitcoin::Transaction {
-//         input: Vec::new(),
-//         // output: vec![
-//         //     bitcoin::TxOut {
-//         //     script_pubkey: bitcoin::script::Builder::new()
-//         //       .push_opcode(bitcoin::opcodes::all::OP_RETURN)
-//         //       .push_opcode(Runestone::MAGIC_NUMBER)
-//         //       .push_opcode(bitcoin::opcodes::all::OP_VERIFY)
-//         //       .push_slice([0])
-//         //       .push_slice::<&bitcoin::blockdata::script::PushBytes>(runes::varint::encode(1).as_slice().try_into().unwrap())
-//         //       .push_slice::<&bitcoin::blockdata::script::PushBytes>(runes::varint::encode(1).as_slice().try_into().unwrap())
-//         //       .push_slice([2, 0])
-//         //       .into_script(),
-//         //     value: 0,
-//         //   },
-//         // ],
-//         output: vec![bitcoin::TxOut {
-//             script_pubkey: Runestone {
-//                 // edicts: Vec::new(),
-//                 edicts: vec![
-//                     Edict {
-//                         id: RuneId::new(0, 0).unwrap(),
-//                         amount: 2,
-//                         output: 0,
-//                     },
-//                     Edict {
-//                         id: RuneId::new(0, 0).unwrap(),
-//                         amount: 5,
-//                         output: 0,
-//                     },
-//                 ],
-//                 etching: Some(Etching {
-//                     divisibility: Some(18),
-//                     premine: Some(100),
-//                     rune: Some(Rune::from_str("LESTHER")?),
-//                     symbol: Some('L'),
-//                     // symbol: None,
-//                     terms: Some(Terms {
-//                         amount: Some(2),
-//                         cap: Some(200),
-//                         height: (None, None),
-//                         offset: (Some(10), Some(20)),
-//                     }),
-//                     // spacers: Some(63),
-//                     spacers: Some(SpacedRune::from_str("L.E.S.T.H.E.R").unwrap().spacers),
-//                 }),
-//                 cenotaph: 0,
-//                 mint: RuneId::new(0, 0),
-//                 pointer: Some(0), // ..default()
-//             }
-//             .encipher(),
-//             // script_pubkey: bitcoin::ScriptBuf::from_bytes(script_pubkey),
-//             value: 0,
-//         }],
-//         lock_time: bitcoin::blockdata::locktime::absolute::LockTime::ZERO,
-//         version: 2,
-//     });
+#[utoipa::path(
+    responses(
+        (status = 200, description = "API is alive and well!", body = SimpleStatus)
+    )
+)]
+#[get("/")]
+async fn hello() -> impl Responder {
+    HttpResponse::Ok().json(schemas::SimpleStatus {
+        message: "Hello World".to_string(),
+    })
+}
 
-//     if some_runestone.is_none() {
-//         println!("No Runestone found in transaction");
-//         return Ok(());
-//     }
-
-//     let runestone = some_runestone.unwrap();
-//     println!("Runestone: {:?}", runestone);
-
-//     let rune_name = SpacedRune {
-//         rune: runestone.etching.unwrap().rune.unwrap(),
-//         spacers: runestone.etching.unwrap().spacers.unwrap_or(0),
-//     };
-
-//     let rune_symbol = runestone.etching.unwrap().symbol.unwrap_or('¤');
-
-//     println!("Rune name: {:?}", rune_name.to_string());
-//     println!("Rune symbol: {:?}", rune_symbol);
-//     println!("Is cenotaph: {:?}", runestone.is_cenotaph());
-//     println!(
-//         "Cenotaph reasons: {:?}",
-//         runestone
-//             .cenotaph_reasons()
-//             .iter()
-//             .map(|cenotaph| cenotaph.to_string())
-//             .collect::<Vec<String>>()
-//             .join(",")
-//     );
-
-//     Ok(())
-// }
-
-#[tokio::main]
+// #[tokio::main]
+#[actix_web::main]
 async fn main() -> Result<(), Error> {
+    let manager = SqliteConnectionManager::file("./runes.db");
+    let pool = r2d2::Pool::builder()
+        .build(manager)
+        .expect("Error building a connection pool");
+
     let indexer = Indexer {
-        chain: Network::Bitcoin,
+            chain: Network::Testnet,
+            rpc_url: "https://powerful-cool-bush.btc-testnet.quiknode.pro/cf40fbe86ac4d435ce4799c8aae18c1dc65b96c8".to_string(),
+            conn: &pool.clone().get().unwrap(),
     };
 
     indexer.index_blocks().await?;
+
+    #[derive(OpenApi)]
+    #[openapi(
+        paths(
+            hello,
+            services::get_runes,
+            services::get_rune_by_id,
+            services::get_address_balance_by_rune_id,
+            services::get_address_balance_list
+        ),
+        components(schemas(
+            schemas::SimpleStatus,
+            schemas::RuneEntryListResponse,
+            schemas::RuneEntryDetailsResponse,
+            schemas::AddressBalanceResponse,
+            schemas::AddressBalanceListResponse,
+            db::RuneEntry,
+            db::Terms
+        ),)
+    )]
+    struct ApiDoc;
+    let openapi = ApiDoc::openapi();
+
+    log_file::log("HTTP Server started on http://localhost:8080")?;
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(Data::new(AppState { pool: pool.clone() }))
+            .service(hello)
+            .service(services::get_runes)
+            .service(services::get_rune_by_id)
+            .service(services::get_address_balance_by_rune_id)
+            .service(services::get_address_balance_list)
+            .service(
+                SwaggerUi::new("/swagger/{_:.*}").url("/api-docs/openapi.json", openapi.clone()),
+            )
+
+        // .configure(services::config)
+    })
+    .bind(("localhost", 8080))?
+    .run()
+    .await?;
 
     // // let tx = btc_rpc::get_transaction(
     // //     "e279cb8e09983e63117f7879f2393e3fbc1d132f5c3c8f4adae3bce7799556c4",

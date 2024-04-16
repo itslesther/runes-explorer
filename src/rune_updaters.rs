@@ -1,8 +1,8 @@
-use crate::adapters::db::Database;
 use super::adapters::db::{RuneEntry, RuneTransfer, Terms, Transaction as DbTransaction, TXO};
+use crate::adapters::db::Database;
 // use super::adapters::mock_db::MockDb as Db;
 use super::adapters::sqlite::SQLite as Db;
-use super::btc_rpc;
+use super::btc_rpc::BTCRPC;
 use super::lot::Lot;
 use super::runes::*;
 use super::utils;
@@ -13,19 +13,10 @@ pub struct RuneUpdater<'a> {
     pub burned: HashMap<RuneId, Lot>,
     pub block_height: u32,
     pub block_time: u32,
+    pub btc_rpc: &'a BTCRPC,
 }
 
 impl<'a> RuneUpdater<'a> {
-    // pub fn init(database: Db, chain: Network, block_height: u32, block_time: u32) -> RuneUpdater {
-    //     RuneUpdater {
-    //         database,
-    //         chain,
-    //         burned: HashMap::new(),
-    //         block_height,
-    //         block_time,
-    //     }
-    // }
-
     pub async fn index_runes(
         &mut self,
         tx_index: u32,
@@ -219,6 +210,7 @@ impl<'a> RuneUpdater<'a> {
     fn add_transaction(&mut self, tx_id: &str, artifact: &Artifact) -> Result {
         self.database.add_transaction(DbTransaction {
             tx_id: tx_id.to_string(),
+            block_height: self.block_height.into(),
             is_artifact: true,
             // is_artifact: artifact.is_some(),
             is_runestone: if let Artifact::Runestone(_) = artifact {
@@ -256,6 +248,7 @@ impl<'a> RuneUpdater<'a> {
             self.database.add_txo(TXO {
                 tx_id: tx_id.to_string(),
                 output_index: vout as u32,
+                block_height: self.block_height.into(),
                 value: tx.output[vout].value as u128,
                 address: utils::output_to_address(&tx.output[vout], self.chain),
                 address_lowercase: utils::output_to_address(&tx.output[vout], self.chain)
@@ -279,6 +272,7 @@ impl<'a> RuneUpdater<'a> {
             self.database.add_rune_transfer(RuneTransfer {
                 tx_id: tx_id.to_string(),
                 output_index: vout as u32,
+                block_height: self.block_height.into(),
                 rune_id: id.to_string(),
                 amount: balance.n(),
                 address: utils::output_to_address(&tx.output[vout], self.chain),
@@ -503,8 +497,10 @@ impl<'a> RuneUpdater<'a> {
                     continue;
                 }
 
-                let Ok(tx_info) =
-                    btc_rpc::get_transaction(&input.previous_output.txid.to_string()).await
+                let Ok(tx_info) = self
+                    .btc_rpc
+                    .get_transaction(&input.previous_output.txid.to_string())
+                    .await
                 // .into_option()?
                 else {
                     panic!("input not in UTXO set: {}", input.previous_output);

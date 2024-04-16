@@ -1,12 +1,15 @@
+use std::collections::HashMap;
+
 use anyhow::Error;
 use serde::*;
+use utoipa::ToSchema;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Statistics {
     pub block_height: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct RuneEntry {
     pub etching_tx_id: String,
     pub block_height: u64,
@@ -25,9 +28,10 @@ pub struct RuneEntry {
     pub rune_number: u128,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct Transaction {
     pub tx_id: String,
+    pub block_height: u64,
     // pub inputs: Vec<TXO>,
     // pub outputs: Vec<TXO>,
     pub is_artifact: bool,
@@ -36,7 +40,7 @@ pub struct Transaction {
     pub cenotapth_messages: Option<String>,
     pub timestamp: u32,
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct Terms {
     pub amount: Option<u128>,
     pub cap: Option<u128>,
@@ -45,10 +49,11 @@ pub struct Terms {
     pub offset_start: Option<u64>,
     pub offset_end: Option<u64>,
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct TXO {
     pub tx_id: String,
     pub output_index: u32,
+    pub block_height: u64,
     pub value: u128,
     pub address: Option<String>,
     pub address_lowercase: Option<String>,
@@ -57,10 +62,11 @@ pub struct TXO {
     pub spent_tx_id: Option<String>,
     pub timestamp: u32,
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct RuneTransfer {
     pub tx_id: String,
     pub output_index: u32,
+    pub block_height: u64,
     pub rune_id: String,
     pub amount: u128,
     pub address: Option<String>,
@@ -94,6 +100,7 @@ pub trait Database {
     ) -> Result<(), Error>;
     fn add_txo(&mut self, txo: TXO) -> Result<(), Error>;
     fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str)-> Result<u128, Error>;
+    fn get_address_balance_list(&self, address: &str)-> Result<HashMap<String, u128>, Error>;
     fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error>;
     fn get_rune_count(&self) -> Result<u128, Error>;
     fn get_block_height(&self) -> Result<u64, Error>;
