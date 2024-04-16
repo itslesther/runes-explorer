@@ -1,4 +1,4 @@
-use super::adapters::db::{RuneEntry, RuneTransfer, Terms, Transaction as DbTransaction, TXO};
+use super::adapters::db::{RuneEntry, RuneTXO, Terms, Transaction as DbTransaction, TXO};
 use crate::adapters::db::Database;
 // use super::adapters::mock_db::MockDb as Db;
 use super::adapters::sqlite::SQLite as Db;
@@ -269,7 +269,7 @@ impl<'a> RuneUpdater<'a> {
         balances: Vec<(RuneId, Lot)>,
     ) -> Result {
         for (id, balance) in balances {
-            self.database.add_rune_transfer(RuneTransfer {
+            self.database.add_rune_txo(RuneTXO {
                 tx_id: tx_id.to_string(),
                 output_index: vout as u32,
                 block_height: self.block_height.into(),
@@ -445,12 +445,12 @@ impl<'a> RuneUpdater<'a> {
 
         // increment unallocated runes with the runes in tx inputs
         for input in &tx.input {
-            let rune_transfers = self.database.get_runes_transfers_by_output_index(
+            let runes_txos = self.database.get_runes_txo_by_output_index(
                 &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
             )?;
 
-            for rt in rune_transfers {
+            for rt in runes_txos {
                 *unallocated
                     .entry(rt.rune_id.parse::<RuneId>()?)
                     .or_default() += rt.amount;

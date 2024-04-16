@@ -65,12 +65,11 @@ async fn get_address_balance_by_rune_id(
             .unwrap(),
     };
 
-
     HttpResponse::Ok().json(response)
 }
 
 #[utoipa::path(
-    responses((status = 200, description = "Returns balance list for a the specified address", body = AddressBalanceListResponse)),
+    responses((status = 200, description = "Returns balances object for a the specified address", body = AddressBalanceListResponse)),
     params(AddressBalanceListParams)
 )]
 #[get("/address/{address}/runes/balance-list")]
@@ -85,11 +84,58 @@ async fn get_address_balance_list(
     let address = &path_params.address;
 
     let response = AddressBalanceListResponse {
+        data: database.get_address_balance_list(address).unwrap(),
+    };
+
+    HttpResponse::Ok().json(response)
+}
+
+#[utoipa::path(
+    responses((status = 200, description = "Returns runes utxo details", body = RunesTXOByOutputIndexResponse)),
+    params(RunesTXOByOutputIndexParams)
+)]
+#[get("/runes/utxo/{tx_id}/{index}")]
+async fn get_runes_txo_by_output_index(
+    state: web::Data<AppState>,
+    path_params: web::Path<RunesTXOByOutputIndexParams>,
+) -> impl Responder {
+    let conn = &state.pool.get().unwrap();
+
+    let database = SQLite { conn };
+
+    let tx_id = &path_params.tx_id;
+    let index = path_params.index;
+
+    let response = RunesTXOByOutputIndexResponse {
         data: database
-            .get_address_balance_list(address)
+            .get_runes_txo_by_output_index(tx_id, index)
             .unwrap(),
     };
 
     HttpResponse::Ok().json(response)
 }
 
+#[utoipa::path(
+    responses((status = 200, description = "Returns utxo for the specified address and rune", body = AddressRunesUTXOByRuneIdResponse)),
+    params(AddressRunesUTXOByRuneIdParams)
+)]
+#[get("/address/{address}/runes/{rune_id}/utxo")]
+async fn get_address_runes_utxo_by_rune_id(
+    state: web::Data<AppState>,
+    path_params: web::Path<AddressRunesUTXOByRuneIdParams>,
+) -> impl Responder {
+    let conn = &state.pool.get().unwrap();
+
+    let database = SQLite { conn };
+
+    let address = &path_params.address;
+    let rune_id = &path_params.rune_id;
+
+    let response = AddressRunesUTXOByRuneIdResponse {
+        data: database
+            .get_address_runes_utxo_by_rune_id(address, rune_id)
+            .unwrap(),
+    };
+
+    HttpResponse::Ok().json(response)
+}

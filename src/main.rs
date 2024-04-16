@@ -1,5 +1,3 @@
-use anyhow::Error;
-
 mod adapters;
 mod btc_rpc;
 mod indexer;
@@ -10,13 +8,13 @@ mod runes;
 mod server;
 mod utils;
 
+use anyhow::Error;
 use actix_web::{get, web::Data, App, HttpResponse, HttpServer, Responder};
 use adapters::db;
 use bitcoin::network::constants::Network;
 use indexer::Indexer;
 use r2d2::Pool;
 use server::{schemas, services};
-
 use r2d2_sqlite::SqliteConnectionManager;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -60,7 +58,9 @@ async fn main() -> Result<(), Error> {
             services::get_runes,
             services::get_rune_by_id,
             services::get_address_balance_by_rune_id,
-            services::get_address_balance_list
+            services::get_address_balance_list,
+            services::get_runes_txo_by_output_index,
+            services::get_address_runes_utxo_by_rune_id,
         ),
         components(schemas(
             schemas::SimpleStatus,
@@ -68,8 +68,11 @@ async fn main() -> Result<(), Error> {
             schemas::RuneEntryDetailsResponse,
             schemas::AddressBalanceResponse,
             schemas::AddressBalanceListResponse,
+            schemas::RunesTXOByOutputIndexResponse,
+            schemas::AddressRunesUTXOByRuneIdResponse,
             db::RuneEntry,
-            db::Terms
+            db::Terms,
+            db::RuneTXO,
         ),)
     )]
     struct ApiDoc;
@@ -85,6 +88,8 @@ async fn main() -> Result<(), Error> {
             .service(services::get_rune_by_id)
             .service(services::get_address_balance_by_rune_id)
             .service(services::get_address_balance_list)
+            .service(services::get_runes_txo_by_output_index)
+            .service(services::get_address_runes_utxo_by_rune_id)
             .service(
                 SwaggerUi::new("/swagger/{_:.*}").url("/api-docs/openapi.json", openapi.clone()),
             )
@@ -95,12 +100,13 @@ async fn main() -> Result<(), Error> {
     .run()
     .await?;
 
-    // // let tx = btc_rpc::get_transaction(
-    // //     "e279cb8e09983e63117f7879f2393e3fbc1d132f5c3c8f4adae3bce7799556c4",
-    // // )
-    // // .await?;
+//     let BTCRPC = btc_rpc::BTCRPC {
+//         url: "https://powerful-cool-bush.btc-testnet.quiknode.pro/cf40fbe86ac4d435ce4799c8aae18c1dc65b96c8".to_string()
+//     };
 
-    // // println!("Transaction raw: {:?}", tx.raw);
+//    let tx =  BTCRPC.get_transaction("8b37b98cce0e4f7a6210823986f7c2b528ca0c93ac091dbb7d9a7f920daf3179").await?;
+//     let artifact = runes::Runestone::decipher(&tx.data);
+//     println!("Artifact: {:?}", artifact);
 
     // // println!(
     // //     "Address {:?}",
@@ -188,127 +194,6 @@ async fn main() -> Result<(), Error> {
     // };
 
     // println!("Runestone: {:?}", runestone);
-
-    // let mut db: adapters::mock_db::MockDb = adapters::mock_db::MockDb {
-    //     rune_entries: Vec::new(),
-    //     transactions: Vec::new(),
-    //     rune_transfers: Vec::new(),
-    //     txos: Vec::new(),
-    //     statistics: adapters::db::Statistics {
-    //         block_height: 0,
-    //     }
-    // };
-
-    // db.add_rune_entry(adapters::db::RuneEntry {
-    //     etching_tx_id: "e279cb8".to_string(),
-    //     block_height: 1,
-    //     rune_id: "1:2".to_string(),
-    //     name: "L.E.S.T.H.E.R".to_string(),
-    //     raw_name: "LESTHER".to_string(),
-    //     symbol: Some('L'),
-    //     divisibility: 18,
-    //     premine: 100,
-    //     terms: Some(adapters::db::Terms {
-    //         amount: Some(2),
-    //         cap: Some(200),
-    //         height_start: None,
-    //         height_end: None,
-    //         offset_start: Some(10),
-    //         offset_end: Some(20),
-    //     }),
-    //     burned: 0,
-    //     mint_count: 0,
-    //     timestamp: 0,
-    //     is_cenotapth: false,
-    //     rune_number: 0,
-    // })?;
-
-    // // println!("Rune entries: {:?}", db.get_runes()?);
-
-    // // println!("mint count: {:?}", db.get_runes()?[0].mint_count);
-    // // db.update_rune_entry_mint_count("1:2")?;
-    // // println!("mint count: {:?}", db.get_runes()?[0].mint_count);
-
-    // // println!("burn count: {:?}", db.get_runes()?[0].burned);
-    // // db.increase_rune_entry_burned("1:2", 5)?;
-    // // println!("burn count: {:?}", db.get_runes()?[0].burned);
-
-    // let latest_block_height = btc_rpc::get_latest_validated_block_height().await?;
-    // let start_block_height = 2583205;
-    // // let start_block_height = 2583205;
-
-    // println!("Latest height: {:?}", latest_block_height);
-
-    // let mut artifact_txs: Vec<String> = Vec::new();
-
-    // for block_height in start_block_height..=latest_block_height {
-    //     println!("\nIndexing Block height: {:?}", block_height);
-
-    //     let block = btc_rpc::get_block_by_height(block_height).await?;
-
-    //     println!("Tx count: {:?}", block.n_tx);
-
-    //     let txs = block.tx;
-
-    //     for tx in txs.iter() {
-    //         let artifact = runes::Runestone::decipher(&tx.data);
-
-    //         let is_artifact = artifact.is_some();
-
-    //         let is_runestone = if let Some(runes::Artifact::Runestone(_)) = artifact {
-    //             true
-    //         } else {
-    //             false
-    //         };
-
-    //         let is_cenotapth = if let Some(runes::Artifact::Cenotaph(_)) = artifact {
-    //             true
-    //         } else {
-    //             false
-    //         };
-
-    //         let cenotapth_messages = if let Some(runes::Artifact::Cenotaph(cenotaph)) = artifact {
-    //             Some(
-    //                 cenotaph
-    //                     .flaws()
-    //                     .iter()
-    //                     .map(|flaw| flaw.to_string())
-    //                     .collect::<Vec<String>>()
-    //                     .join(","),
-    //             )
-    //         } else {
-    //             None
-    //         };
-
-    //         // println!("Tx: {:?} is artifact: {:?}", &tx.raw.txid, is_artifact);
-
-    //         if is_artifact {
-    //             artifact_txs.push(tx.raw.txid.clone());
-
-    //             let mut data_file = OpenOptions::new()
-    //                 .append(true)
-    //                 .open("data.txt")
-    //                 .expect("cannot open file");
-
-    //             // Write to a file
-    //             data_file
-    //                 .write((tx.raw.txid).as_bytes())
-    //                 .expect("write failed");
-
-    //             data_file
-    //             .write(("\n").as_bytes())
-    //             .expect("write failed");
-
-    //             println!(
-    //                 "Tx: {:?} is runestone: {:?}, is cenotapth: {:?}, cenotapth messages: {:?}",
-    //                 tx.raw.txid, is_runestone, is_cenotapth, cenotapth_messages
-    //             );
-    //         }
-    //     }
-    // }
-
-    // println!("\n\nArtifact txs: {:?}", artifact_txs);
-    // // println!("Runestone: {:?}", runestone);
 
     Ok(())
 }

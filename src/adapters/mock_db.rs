@@ -6,7 +6,7 @@ use anyhow::Error;
 pub struct MockDb {
     pub rune_entries: Vec<RuneEntry>,
     pub transactions: Vec<Transaction>,
-    pub rune_transfers: Vec<RuneTransfer>,
+    pub rune_transfers: Vec<RuneTXO>,
     pub txos: Vec<TXO>,
     pub statistics: Statistics,
 }
@@ -24,11 +24,11 @@ impl MockDb {
 }
 
 impl Database for MockDb {
-    fn get_runes_transfers_by_output_index(
-        &mut self,
+    fn get_runes_txo_by_output_index(
+        &self,
         tx_id: &str,
         output_index: u32,
-    ) -> Result<Vec<RuneTransfer>, Error> {
+    ) -> Result<Vec<RuneTXO>, Error> {
         Ok(self
             .rune_transfers
             .iter()
@@ -85,7 +85,7 @@ impl Database for MockDb {
         Ok(())
     }
 
-    fn add_rune_transfer(&mut self, rune_transfer: RuneTransfer) -> Result<(), Error> {
+    fn add_rune_txo(&mut self, rune_transfer: RuneTXO) -> Result<(), Error> {
         self.rune_transfers.push(rune_transfer);
         Ok(())
     }
@@ -153,12 +153,29 @@ impl Database for MockDb {
         Ok(balance_list)
     }
 
-    fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error> {
+    fn get_address_runes_txo(&self, address: &str) -> Result<Vec<RuneTXO>, Error> {
         Ok(self
             .rune_transfers
             .iter()
             .cloned()
             .filter(|rt| rt.address_lowercase == Some(address.to_lowercase().to_string()))
+            .collect())
+    }
+
+    fn get_address_runes_utxo_by_rune_id(
+        &self,
+        address: &str,
+        rune_id: &str,
+    ) -> Result<Vec<RuneTXO>, Error> {
+        Ok(self
+            .rune_transfers
+            .iter()
+            .cloned()
+            .filter(|rt| {
+                rt.address_lowercase == Some(address.to_lowercase().to_string())
+                    && rt.rune_id == rune_id
+                    && rt.is_unspent
+            })
             .collect())
     }
 

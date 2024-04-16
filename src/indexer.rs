@@ -31,8 +31,8 @@ impl <'a> Indexer<'a>  {
 
         let halving_block_height: u32 = 2583205;
 
-        let end_block_height: u32 = halving_block_height + 50;
-        // let end_block_height: u32 = btc_rpc.get_latest_validated_block_height().await?;
+        // let end_block_height: u32 = halving_block_height + 50;
+        let end_block_height: u32 = btc_rpc.get_latest_validated_block_height().await?;
         log(&format!("Current block height: {}", end_block_height))?;
 
         let mut start_block_height: u32 = u32::try_from(database.get_block_height()?)?;

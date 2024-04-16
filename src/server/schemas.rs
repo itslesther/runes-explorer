@@ -44,3 +44,25 @@ pub struct AddressBalanceListParams {
 pub struct AddressBalanceListResponse {
     pub data: HashMap<String, u128>,
 }
+
+#[derive(Deserialize, ToSchema, IntoParams)]
+pub struct RunesTXOByOutputIndexParams {
+    pub tx_id: String,
+    pub index: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct RunesTXOByOutputIndexResponse {
+    pub data: Vec<RuneTXO>,
+}
+
+#[derive(Deserialize, ToSchema, IntoParams)]
+pub struct AddressRunesUTXOByRuneIdParams {
+    pub address: String,
+    pub rune_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct AddressRunesUTXOByRuneIdResponse {
+    pub data: Vec<RuneTXO>,
+}

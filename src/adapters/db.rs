@@ -63,7 +63,7 @@ pub struct TXO {
     pub timestamp: u32,
 }
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
-pub struct RuneTransfer {
+pub struct RuneTXO {
     pub tx_id: String,
     pub output_index: u32,
     pub block_height: u64,
@@ -78,19 +78,18 @@ pub struct RuneTransfer {
 
 pub trait Database {
     // fn init() -> Result<(), Error>;
-    fn get_runes_transfers_by_output_index(
-        &mut self,
+    fn get_runes_txo_by_output_index(
+        &self,
         tx_id: &str,
-        tx_index: u32,
-    ) -> Result<Vec<RuneTransfer>, Error>;
-
+        output_index: u32,
+    ) -> Result<Vec<RuneTXO>, Error>;
     fn get_rune_by_id(&self, rune_id: &str) -> Result<Option<RuneEntry>, Error>;
     fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error>;
     fn increase_rune_entry_burned(&mut self, rune_id: &str, amount: u128) -> Result<(), Error>;
     fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<RuneEntry>, Error>;
     fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error>;
     fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error>;
-    fn add_rune_transfer(&mut self, rune_transfer: RuneTransfer) -> Result<(), Error>;
+    fn add_rune_txo(&mut self, rune_txo: RuneTXO) -> Result<(), Error>;
     fn get_txo(&mut self, tx_id: &str, output_index: u32) -> Result<Option<TXO>, Error>;
     fn mark_utxo_as_spent(
         &mut self,
@@ -99,9 +98,14 @@ pub trait Database {
         spent_tx_id: &str,
     ) -> Result<(), Error>;
     fn add_txo(&mut self, txo: TXO) -> Result<(), Error>;
-    fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str)-> Result<u128, Error>;
-    fn get_address_balance_list(&self, address: &str)-> Result<HashMap<String, u128>, Error>;
-    fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error>;
+    fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> Result<u128, Error>;
+    fn get_address_balance_list(&self, address: &str) -> Result<HashMap<String, u128>, Error>;
+    fn get_address_runes_txo(&self, address: &str) -> Result<Vec<RuneTXO>, Error>;
+    fn get_address_runes_utxo_by_rune_id(
+        &self,
+        address: &str,
+        rune_id: &str,
+    ) -> Result<Vec<RuneTXO>, Error>;
     fn get_rune_count(&self) -> Result<u128, Error>;
     fn get_block_height(&self) -> Result<u64, Error>;
     fn set_block_height(&mut self, block_height: u64) -> Result<(), Error>;

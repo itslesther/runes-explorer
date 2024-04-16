@@ -70,7 +70,7 @@ impl<'a> SQLite<'a> {
         )?;
 
         self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS rune_transfers (
+            "CREATE TABLE IF NOT EXISTS runes_txos (
             tx_id TEXT NOT NULL,
             output_index INTEGER NOT NULL,
             block_height INTEGER NOT NULL,
@@ -115,19 +115,19 @@ impl<'a> SQLite<'a> {
 }
 
 impl<'a> Database for SQLite<'a> {
-    fn get_runes_transfers_by_output_index(
-        &mut self,
+    fn get_runes_txo_by_output_index(
+        &self,
         tx_id: &str,
         output_index: u32,
-    ) -> Result<Vec<RuneTransfer>, Error> {
+    ) -> Result<Vec<RuneTXO>, Error> {
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM rune_transfers WHERE tx_id = ?1 AND output_index = ?2")?;
+            .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 AND output_index = ?2")?;
 
         let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
             let amount: String = row.get("amount")?;
 
-            Ok(RuneTransfer {
+            Ok(RuneTXO {
                 tx_id: row.get("tx_id")?,
                 output_index: row.get("output_index")?,
                 rune_id: row.get("rune_id")?,
@@ -379,25 +379,25 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn add_rune_transfer(&mut self, rune_transfer: RuneTransfer) -> Result<(), Error> {
-        self.conn.execute("INSERT INTO rune_transfers (tx_id, output_index, rune_id, amount, address, address_lowercase, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    fn add_rune_txo(&mut self, rune_txo: RuneTXO) -> Result<(), Error> {
+        self.conn.execute("INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, address_lowercase, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
-            rune_transfer.tx_id,
-            rune_transfer.output_index,
-            rune_transfer.rune_id,
-            rune_transfer.amount.to_string(),
-            rune_transfer.address,
-            rune_transfer.address_lowercase,
-            rune_transfer.is_unspent,
-            rune_transfer.spent_tx_id,
-            rune_transfer.timestamp,
-            rune_transfer.block_height
+            rune_txo.tx_id,
+            rune_txo.output_index,
+            rune_txo.rune_id,
+            rune_txo.amount.to_string(),
+            rune_txo.address,
+            rune_txo.address_lowercase,
+            rune_txo.is_unspent,
+            rune_txo.spent_tx_id,
+            rune_txo.timestamp,
+            rune_txo.block_height
         ])?;
 
         // println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
         log(&format!(
             "Rune transfer for rune {} added: {:?}",
-            rune_transfer.rune_id, rune_transfer.tx_id
+            rune_txo.rune_id, rune_txo.tx_id
         ))?;
 
         Ok(())
@@ -441,7 +441,7 @@ impl<'a> Database for SQLite<'a> {
         )?;
 
         self.conn.execute(
-            "UPDATE rune_transfers SET is_unspent = ?1, spent_tx_id = ?2 WHERE tx_id = ?3 AND output_index = ?4",
+            "UPDATE runes_txos SET is_unspent = ?1, spent_tx_id = ?2 WHERE tx_id = ?3 AND output_index = ?4",
             params![false, spent_tx_id, tx_id, output_index],
         )?;
 
@@ -479,14 +479,13 @@ impl<'a> Database for SQLite<'a> {
     fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> Result<u128, Error> {
         let mut stmt = self
         .conn
-        .prepare("SELECT amount FROM rune_transfers WHERE address_lowercase = ?1 AND rune_id = ?2 AND is_unspent = ?3")?;
+        .prepare("SELECT amount FROM runes_txos WHERE address_lowercase = ?1 AND rune_id = ?2 AND is_unspent = TRUE")?;
 
-        let result_iter =
-            stmt.query_map(params![address.to_lowercase(), rune_id, true], |row| {
-                let amount: String = row.get("amount")?;
+        let result_iter = stmt.query_map(params![address.to_lowercase(), rune_id], |row| {
+            let amount: String = row.get("amount")?;
 
-                Ok(amount.parse::<u128>().unwrap_or_default())
-            })?;
+            Ok(amount.parse::<u128>().unwrap_or_default())
+        })?;
 
         Ok(result_iter.map(|r| r.unwrap()).sum())
     }
@@ -494,9 +493,9 @@ impl<'a> Database for SQLite<'a> {
     fn get_address_balance_list(&self, address: &str) -> Result<HashMap<String, u128>, Error> {
         let mut stmt = self
         .conn
-        .prepare("SELECT rune_id, amount FROM rune_transfers WHERE address_lowercase = ?1 AND is_unspent = ?2")?;
+        .prepare("SELECT rune_id, amount FROM runes_txos WHERE address_lowercase = ?1 AND is_unspent = TRUE")?;
 
-        let result_iter = stmt.query_map(params![address.to_lowercase(), true], |row| {
+        let result_iter = stmt.query_map(params![address.to_lowercase()], |row| {
             let rune_id: String = row.get("rune_id")?;
             let amount: String = row.get("amount")?;
 
@@ -507,22 +506,53 @@ impl<'a> Database for SQLite<'a> {
 
         for balance in result_iter {
             let (rune_id, amount) = balance.unwrap();
-            *balance_list.entry(rune_id).or_default() +=amount;
+            *balance_list.entry(rune_id).or_default() += amount;
         }
 
         Ok(balance_list)
     }
 
-    fn get_address_transfers(&self, address: &str) -> Result<Vec<RuneTransfer>, Error> {
-        let mut stmt = self.conn.prepare(
-            "SELECT * FROM rune_transfers WHERE address_lowercase = ?1 AND AND is_unspent = ?2",
-        )?;
+    fn get_address_runes_txo(&self, address: &str) -> Result<Vec<RuneTXO>, Error> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM runes_txos WHERE address_lowercase = ?1")?;
 
         let result_iter = stmt
             .query_map(params![address.to_lowercase()], |row| {
                 let amount: String = row.get("amount")?;
 
-                Ok(RuneTransfer {
+                Ok(RuneTXO {
+                    tx_id: row.get("tx_id")?,
+                    output_index: row.get("output_index")?,
+                    rune_id: row.get("rune_id")?,
+                    amount: amount.parse().unwrap(),
+                    address: row.get("address")?,
+                    address_lowercase: row.get("address_lowercase")?,
+                    is_unspent: row.get("is_unspent")?,
+                    spent_tx_id: row.get("spent_tx_id")?,
+                    timestamp: row.get("timestamp")?,
+                    block_height: row.get("block_height")?,
+                })
+            })
+            .unwrap();
+
+        Ok(result_iter.map(|r| r.unwrap()).collect())
+    }
+
+    fn get_address_runes_utxo_by_rune_id(
+        &self,
+        address: &str,
+        rune_id: &str,
+    ) -> Result<Vec<RuneTXO>, Error> {
+        let mut stmt = self.conn.prepare(
+            "SELECT * FROM runes_txos WHERE address_lowercase = ?1 AND rune_id = ?2 AND is_unspent = TRUE",
+        )?;
+
+        let result_iter = stmt
+            .query_map(params![address.to_lowercase(), rune_id], |row| {
+                let amount: String = row.get("amount")?;
+
+                Ok(RuneTXO {
                     tx_id: row.get("tx_id")?,
                     output_index: row.get("output_index")?,
                     rune_id: row.get("rune_id")?,
