@@ -66,3 +66,33 @@ pub struct AddressRunesUTXOByRuneIdParams {
 pub struct AddressRunesUTXOByRuneIdResponse {
     pub data: Vec<RuneTXO>,
 }
+
+#[derive(Deserialize, ToSchema, IntoParams)]
+pub struct TransactionWithRunesParams {
+    pub tx_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct TransactionWithRunesTXO {
+    pub tx_id: String,
+    pub block_height: u64,
+    pub inputs: Vec<RuneTXO>,
+    pub outputs: Vec<RuneTXO>,
+    // pub is_artifact: bool,
+    pub is_runestone: bool,
+    pub is_cenotapth: bool,
+    pub cenotapth_messages: Option<String>,
+    pub timestamp: u32,
+    pub etched_rune_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct TransactionWithRunesResponse {
+    pub data: TransactionWithRunesTXO,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct TransactionListResponse {
+    pub data: Vec<Transaction>,
+}
+

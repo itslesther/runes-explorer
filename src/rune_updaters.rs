@@ -187,7 +187,7 @@ impl<'a> RuneUpdater<'a> {
             // Sort balances by id so tests can assert balances in a fixed order
             balances.sort();
 
-            self.add_rune_transfers(tx, tx_id, vout, balances)?;
+            self.add_rune_txo(tx, tx_id, vout, balances)?;
         }
 
         // increment entries with burned runes
@@ -261,7 +261,7 @@ impl<'a> RuneUpdater<'a> {
         Ok(())
     }
 
-    fn add_rune_transfers(
+    fn add_rune_txo(
         &mut self,
         tx: &Transaction,
         tx_id: &str,

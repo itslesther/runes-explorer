@@ -24,25 +24,20 @@ impl MockDb {
 }
 
 impl Database for MockDb {
-    fn get_runes_txo_by_output_index(
-        &self,
-        tx_id: &str,
-        output_index: u32,
-    ) -> Result<Vec<RuneTXO>, Error> {
-        Ok(self
-            .rune_transfers
-            .iter()
-            .filter(|&rt| rt.tx_id == tx_id.to_string() && rt.output_index == output_index)
-            .cloned() // Change: Add cloned() to create a new iterator with cloned elements
-            .collect())
-    }
-
     fn get_rune_by_id(&self, rune_id: &str) -> Result<Option<RuneEntry>, Error> {
         Ok(self
             .rune_entries
             .iter()
             .cloned()
             .find(|rune| rune.rune_id == rune_id))
+    }
+
+    fn get_rune_by_etched_tx_id(&self, tx_id: &str) -> Result<Option<RuneEntry>, Error> {
+        Ok(self
+            .rune_entries
+            .iter()
+            .cloned()
+            .find(|rune| rune.etching_tx_id == tx_id.to_string()))
     }
 
     fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error> {
@@ -179,12 +174,40 @@ impl Database for MockDb {
             .collect())
     }
 
+    fn get_runes_txo_by_output_index(
+        &self,
+        tx_id: &str,
+        output_index: u32,
+    ) -> Result<Vec<RuneTXO>, Error> {
+        Ok(self
+            .rune_transfers
+            .iter()
+            .filter(|&rt| rt.tx_id == tx_id.to_string() && rt.output_index == output_index)
+            .cloned() // Change: Add cloned() to create a new iterator with cloned elements
+            .collect())
+    }
+
+    fn get_transaction_runes_txo(&self, tx_id: &str) -> Result<Vec<RuneTXO>, Error> {
+        Ok(self
+            .rune_transfers
+            .iter()
+            .filter(|&rt| {
+                rt.tx_id == tx_id.to_string() || rt.spent_tx_id == Some(tx_id.to_string())
+            })
+            .cloned() // Change: Add cloned() to create a new iterator with cloned elements
+            .collect())
+    }
+
     fn get_rune_count(&self) -> Result<u128, Error> {
         Ok(self.rune_entries.len() as u128)
     }
 
     fn get_block_height(&self) -> Result<u64, Error> {
         Ok(self.statistics.block_height)
+    }
+
+    fn get_transactions(&self) -> Result<Vec<Transaction>, Error> {
+        Ok(self.transactions.clone())
     }
 
     fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error> {

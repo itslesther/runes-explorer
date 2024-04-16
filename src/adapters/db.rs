@@ -77,16 +77,11 @@ pub struct RuneTXO {
 }
 
 pub trait Database {
-    // fn init() -> Result<(), Error>;
-    fn get_runes_txo_by_output_index(
-        &self,
-        tx_id: &str,
-        output_index: u32,
-    ) -> Result<Vec<RuneTXO>, Error>;
     fn get_rune_by_id(&self, rune_id: &str) -> Result<Option<RuneEntry>, Error>;
+    fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<RuneEntry>, Error>;
+    fn get_rune_by_etched_tx_id(&self, tx_id: &str) -> Result<Option<RuneEntry>, Error>;
     fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error>;
     fn increase_rune_entry_burned(&mut self, rune_id: &str, amount: u128) -> Result<(), Error>;
-    fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<RuneEntry>, Error>;
     fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error>;
     fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error>;
     fn add_rune_txo(&mut self, rune_txo: RuneTXO) -> Result<(), Error>;
@@ -106,9 +101,19 @@ pub trait Database {
         address: &str,
         rune_id: &str,
     ) -> Result<Vec<RuneTXO>, Error>;
+    fn get_runes_txo_by_output_index(
+        &self,
+        tx_id: &str,
+        output_index: u32,
+    ) -> Result<Vec<RuneTXO>, Error>;
+    fn get_transaction_runes_txo(
+        &self,
+        tx_id: &str
+    ) -> Result<Vec<RuneTXO>, Error>;
     fn get_rune_count(&self) -> Result<u128, Error>;
     fn get_block_height(&self) -> Result<u64, Error>;
     fn set_block_height(&mut self, block_height: u64) -> Result<(), Error>;
+    fn get_transactions(&self) -> Result<Vec<Transaction>, Error>;
     fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error>;
     fn get_runes(&self) -> Result<Vec<RuneEntry>, Error>;
 }

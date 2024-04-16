@@ -8,14 +8,14 @@ mod runes;
 mod server;
 mod utils;
 
-use anyhow::Error;
 use actix_web::{get, web::Data, App, HttpResponse, HttpServer, Responder};
 use adapters::db;
+use anyhow::Error;
 use bitcoin::network::constants::Network;
 use indexer::Indexer;
 use r2d2::Pool;
-use server::{schemas, services};
 use r2d2_sqlite::SqliteConnectionManager;
+use server::{schemas, services};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -61,6 +61,8 @@ async fn main() -> Result<(), Error> {
             services::get_address_balance_list,
             services::get_runes_txo_by_output_index,
             services::get_address_runes_utxo_by_rune_id,
+            services::get_transaction_list,
+            services::get_transaction_with_runes_txo,
         ),
         components(schemas(
             schemas::SimpleStatus,
@@ -70,10 +72,14 @@ async fn main() -> Result<(), Error> {
             schemas::AddressBalanceListResponse,
             schemas::RunesTXOByOutputIndexResponse,
             schemas::AddressRunesUTXOByRuneIdResponse,
+            schemas::TransactionListResponse,
+            schemas::TransactionWithRunesResponse,
+            schemas::TransactionWithRunesTXO,
             db::RuneEntry,
             db::Terms,
             db::RuneTXO,
-        ),)
+            db::Transaction,
+        ))
     )]
     struct ApiDoc;
     let openapi = ApiDoc::openapi();
@@ -90,6 +96,8 @@ async fn main() -> Result<(), Error> {
             .service(services::get_address_balance_list)
             .service(services::get_runes_txo_by_output_index)
             .service(services::get_address_runes_utxo_by_rune_id)
+            .service(services::get_transaction_list)
+            .service(services::get_transaction_with_runes_txo)
             .service(
                 SwaggerUi::new("/swagger/{_:.*}").url("/api-docs/openapi.json", openapi.clone()),
             )
@@ -100,13 +108,13 @@ async fn main() -> Result<(), Error> {
     .run()
     .await?;
 
-//     let BTCRPC = btc_rpc::BTCRPC {
-//         url: "https://powerful-cool-bush.btc-testnet.quiknode.pro/cf40fbe86ac4d435ce4799c8aae18c1dc65b96c8".to_string()
-//     };
+    //     let BTCRPC = btc_rpc::BTCRPC {
+    //         url: "https://powerful-cool-bush.btc-testnet.quiknode.pro/cf40fbe86ac4d435ce4799c8aae18c1dc65b96c8".to_string()
+    //     };
 
-//    let tx =  BTCRPC.get_transaction("8b37b98cce0e4f7a6210823986f7c2b528ca0c93ac091dbb7d9a7f920daf3179").await?;
-//     let artifact = runes::Runestone::decipher(&tx.data);
-//     println!("Artifact: {:?}", artifact);
+    //    let tx =  BTCRPC.get_transaction("8b37b98cce0e4f7a6210823986f7c2b528ca0c93ac091dbb7d9a7f920daf3179").await?;
+    //     let artifact = runes::Runestone::decipher(&tx.data);
+    //     println!("Artifact: {:?}", artifact);
 
     // // println!(
     // //     "Address {:?}",

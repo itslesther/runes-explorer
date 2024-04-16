@@ -115,35 +115,6 @@ impl<'a> SQLite<'a> {
 }
 
 impl<'a> Database for SQLite<'a> {
-    fn get_runes_txo_by_output_index(
-        &self,
-        tx_id: &str,
-        output_index: u32,
-    ) -> Result<Vec<RuneTXO>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 AND output_index = ?2")?;
-
-        let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
-            let amount: String = row.get("amount")?;
-
-            Ok(RuneTXO {
-                tx_id: row.get("tx_id")?,
-                output_index: row.get("output_index")?,
-                rune_id: row.get("rune_id")?,
-                amount: amount.parse().unwrap(),
-                address: row.get("address")?,
-                address_lowercase: row.get("address_lowercase")?,
-                is_unspent: row.get("is_unspent")?,
-                spent_tx_id: row.get("spent_tx_id")?,
-                timestamp: row.get("timestamp")?,
-                block_height: row.get("block_height")?,
-            })
-        })?;
-
-        Ok(result_iter.map(|r| r.unwrap()).collect())
-    }
-
     fn get_rune_by_id(&self, rune_id: &str) -> Result<Option<RuneEntry>, Error> {
         let mut stmt = self
             .conn
@@ -197,6 +168,62 @@ impl<'a> Database for SQLite<'a> {
 
         let rune_entry = result_iter.map(|r| r.unwrap()).next();
         Ok(rune_entry)
+    }
+
+    fn get_rune_by_etched_tx_id(&self, etching_tx_id: &str) -> Result<Option<RuneEntry>, Error> {
+        let mut stmt: rusqlite::Statement<'_> = self
+            .conn
+            .prepare("SELECT * FROM rune_entries WHERE etching_tx_id = ?1")?;
+
+        let result_iter = stmt.query_map(params![etching_tx_id], |row| {
+            let symbol: Option<String> = row.get("symbol")?;
+            let premine: String = row.get("premine")?;
+            let burned: String = row.get("burned")?;
+            let mint_count: String = row.get("mint_count")?;
+            let rune_number: String = row.get("rune_number")?;
+            let rune_id: String = row.get("rune_id")?;
+
+            let mut terms_stmt = self
+                .conn
+                .prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
+
+            let terms_result_iter = terms_stmt.query_map(params![rune_id], |row| {
+                let amount: Option<String> = row.get("amount")?;
+                let cap: Option<String> = row.get("cap")?;
+
+                Ok(Terms {
+                    amount: amount.map(|v| v.parse::<u128>().unwrap()),
+                    cap: cap.map(|v| v.parse::<u128>().unwrap()),
+                    height_start: row.get("height_start")?,
+                    height_end: row.get("height_end")?,
+                    offset_start: row.get("offset_start")?,
+                    offset_end: row.get("offset_end")?,
+                })
+            })?;
+
+            let terms: Option<Terms> = terms_result_iter.map(|t| t.unwrap()).next();
+
+            Ok(RuneEntry {
+                etching_tx_id: row.get("etching_tx_id")?,
+                block_height: row.get("block_height")?,
+                rune_id,
+                name: row.get("name")?,
+                raw_name: row.get("raw_name")?,
+                symbol: symbol.map(|s| s.chars().next().unwrap()),
+                divisibility: row.get("divisibility")?,
+                premine: premine.parse().unwrap(),
+                terms,
+                burned: burned.parse().unwrap(),
+                mint_count: mint_count.parse().unwrap(),
+                timestamp: row.get("timestamp")?,
+                is_cenotapth: row.get("is_cenotapth")?,
+                cenotapth_messages: row.get("cenotapth_messages")?,
+                rune_number: rune_number.parse().unwrap(),
+            })
+        })?;
+
+        let rune_entry = result_iter.map(|r| r.unwrap()).next();
+        Ok(rune_entry)       
     }
 
     fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error> {
@@ -436,13 +463,13 @@ impl<'a> Database for SQLite<'a> {
         spent_tx_id: &str,
     ) -> Result<(), Error> {
         self.conn.execute(
-            "UPDATE txos SET is_unspent = ?1, spent_tx_id = ?2 WHERE tx_id = ?3 AND output_index = ?4",
-            params![false, spent_tx_id, tx_id, output_index],
+            "UPDATE txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
+            params![spent_tx_id, tx_id, output_index],
         )?;
 
         self.conn.execute(
-            "UPDATE runes_txos SET is_unspent = ?1, spent_tx_id = ?2 WHERE tx_id = ?3 AND output_index = ?4",
-            params![false, spent_tx_id, tx_id, output_index],
+            "UPDATE runes_txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
+            params![spent_tx_id, tx_id, output_index],
         )?;
 
         // println!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id);
@@ -510,6 +537,63 @@ impl<'a> Database for SQLite<'a> {
         }
 
         Ok(balance_list)
+    }
+
+    fn get_runes_txo_by_output_index(
+        &self,
+        tx_id: &str,
+        output_index: u32,
+    ) -> Result<Vec<RuneTXO>, Error> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 AND output_index = ?2")?;
+
+        let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
+            let amount: String = row.get("amount")?;
+
+            Ok(RuneTXO {
+                tx_id: row.get("tx_id")?,
+                output_index: row.get("output_index")?,
+                rune_id: row.get("rune_id")?,
+                amount: amount.parse().unwrap(),
+                address: row.get("address")?,
+                address_lowercase: row.get("address_lowercase")?,
+                is_unspent: row.get("is_unspent")?,
+                spent_tx_id: row.get("spent_tx_id")?,
+                timestamp: row.get("timestamp")?,
+                block_height: row.get("block_height")?,
+            })
+        })?;
+
+        Ok(result_iter.map(|r| r.unwrap()).collect())
+    }
+
+    fn get_transaction_runes_txo(
+        &self,
+        tx_id: &str
+    ) -> Result<Vec<RuneTXO>, Error> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 OR spent_tx_id = ?1")?;
+
+        let result_iter = stmt.query_map(params![tx_id], |row| {
+            let amount: String = row.get("amount")?;
+
+            Ok(RuneTXO {
+                tx_id: row.get("tx_id")?,
+                output_index: row.get("output_index")?,
+                rune_id: row.get("rune_id")?,
+                amount: amount.parse().unwrap(),
+                address: row.get("address")?,
+                address_lowercase: row.get("address_lowercase")?,
+                is_unspent: row.get("is_unspent")?,
+                spent_tx_id: row.get("spent_tx_id")?,
+                timestamp: row.get("timestamp")?,
+                block_height: row.get("block_height")?,
+            })
+        })?;
+
+        Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
     fn get_address_runes_txo(&self, address: &str) -> Result<Vec<RuneTXO>, Error> {
@@ -617,6 +701,25 @@ impl<'a> Database for SQLite<'a> {
         let result = result_iter.map(|r| r.unwrap()).next();
 
         Ok(result)
+    }
+
+    fn get_transactions(&self) -> Result<Vec<Transaction>, Error> {
+        let mut stmt = self.conn.prepare("SELECT * FROM transactions")?;
+        let result_iter = stmt
+            .query_map([], |row| {
+                Ok(Transaction {
+                    tx_id: row.get("tx_id")?,
+                    is_artifact: row.get("is_artifact")?,
+                    is_runestone: row.get("is_runestone")?,
+                    is_cenotapth: row.get("is_cenotapth")?,
+                    cenotapth_messages: row.get("cenotapth_messages")?,
+                    timestamp: row.get("timestamp")?,
+                    block_height: row.get("block_height")?,
+                })
+            })
+            .unwrap();
+
+        Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
     fn get_runes(&self) -> Result<Vec<RuneEntry>, Error> {
