@@ -4,9 +4,6 @@ use super::db::*;
 use crate::log_file::log;
 use anyhow::Error;
 use rusqlite::{params, Connection, Result};
-// use sqlx::{self, FromRow};
-// use sqlx::sqlite;
-// use sqlx::sqlite;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SQLite<'a> {
@@ -20,9 +17,6 @@ impl<'a> SQLite<'a> {
     //     SQLite { conn }
     // }
     pub fn init_tables(&self) -> Result<(), Error> {
-        // let conn = &Connection::open("./runes.db")?;
-        // let conn = Connection::open_in_memory()?;
-
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_entries (
             etching_tx_id TEXT NOT NULL,
@@ -37,10 +31,11 @@ impl<'a> SQLite<'a> {
             mint_count TEXT NOT NULL,
             timestamp INTEGER NOT NULL,
             is_cenotapth BOOLEAN,
-            cenotapth_messages TEXT,
-            rune_number TEXT NOT NULL
+            cenotapth_message TEXT,
+            rune_number TEXT NOT NULL,
+            turbo BOOLEAN NOT NULL
         )",
-            (), // empty list of parameters.
+            (),
         )?;
 
         self.conn.execute(
@@ -53,7 +48,7 @@ impl<'a> SQLite<'a> {
             offset_start INTEGER,
             offset_end INTEGER
         )",
-            (), // empty list of parameters.
+            (),
         )?;
 
         self.conn.execute(
@@ -63,10 +58,25 @@ impl<'a> SQLite<'a> {
             is_artifact BOOLEAN,
             is_runestone BOOLEAN,
             is_cenotapth BOOLEAN,
-            cenotapth_messages TEXT,
+            cenotapth_message TEXT,
             timestamp INTEGER
       )",
-            (), // empty list of parameters.
+            (),
+        )?;
+
+        // event_type: etch, mint, burn, transfer
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS rune_events (
+            tx_id TEXT NOT NULL,
+            rune_id TEXT NOT NULL,
+            block_height INTEGER NOT NULL,
+            timestamp INTEGER,
+            amount TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            output_index INTEGER,
+            address TEXT
+      )",
+            (),
         )?;
 
         self.conn.execute(
@@ -77,12 +87,11 @@ impl<'a> SQLite<'a> {
             rune_id TEXT NOT NULL,
             amount TEXT NOT NULL,
             address TEXT,
-            address_lowercase TEXT,
             is_unspent BOOLEAN,
             spent_tx_id TEXT,
             timestamp INTEGER
       )",
-            (), // empty list of parameters.
+            (),
         )?;
 
         self.conn.execute(
@@ -92,22 +101,22 @@ impl<'a> SQLite<'a> {
             block_height INTEGER NOT NULL,
             value TEXT NOT NULL,
             address TEXT,
-            address_lowercase TEXT,
             is_unspent BOOLEAN,
             spent_tx_id TEXT,
             timestamp INTEGER
       )",
-            (), // empty list of parameters.
+            (),
         )?;
 
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS statistics (
             block_height INTEGER NOT NULL
-        )",
-            (), // empty list of parameters.
+            )",
+            (),
         )?;
 
-        // println!("Tables initialized");
+        self.create_db_indexes()?;
+
         log("Tables initialized")?;
 
         Ok(())
@@ -161,8 +170,9 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
-                cenotapth_messages: row.get("cenotapth_messages")?,
+                cenotapth_message: row.get("cenotapth_message")?,
                 rune_number: rune_number.parse().unwrap(),
+                turbo: row.get("turbo")?,
             })
         })?;
 
@@ -217,16 +227,24 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
-                cenotapth_messages: row.get("cenotapth_messages")?,
+                cenotapth_message: row.get("cenotapth_message")?,
                 rune_number: rune_number.parse().unwrap(),
+                turbo: row.get("turbo")?,
             })
         })?;
 
         let rune_entry = result_iter.map(|r| r.unwrap()).next();
-        Ok(rune_entry)       
+        Ok(rune_entry)
     }
 
-    fn update_rune_entry_mint_count(&mut self, rune_id: &str) -> Result<(), Error> {
+    fn update_rune_entry_mint_count(
+        &mut self,
+        rune_id: &str,
+        tx_id: &str,
+        amount: u128,
+        block_height: u64,
+        timestamp: u32,
+    ) -> Result<(), Error> {
         let mut stmt = self
             .conn
             .prepare("SELECT mint_count FROM rune_entries WHERE rune_id = ?1")?;
@@ -241,14 +259,21 @@ impl<'a> Database for SQLite<'a> {
         let new_mint_count: String = result_iter.map(|r| r.unwrap()).next().unwrap();
 
         self.conn.execute(
-            "UPDATE rune_entries SET mint_count = ?1 WHERE rune_id = ?2",
-            params![new_mint_count, rune_id],
+            "
+                BEGIN TRANSACTION;
+
+            UPDATE rune_entries SET mint_count = ?1
+                WHERE rune_id = ?2;
+
+            INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type)
+                VALUES (?3, ?4, ?5, ?6, ?7, ?8);
+
+                COMMIT;
+            ",
+            params![new_mint_count, rune_id, tx_id, rune_id, block_height, timestamp, amount.to_string(), "mint"],
         )?;
 
-        // println!(
-        //     "Mint count for rune id {} updated to: {}",
-        //     new_mint_count, rune_id
-        // );
+
         log(&format!(
             "Mint count for rune id {} updated to: {}",
             rune_id, new_mint_count
@@ -276,13 +301,31 @@ impl<'a> Database for SQLite<'a> {
             params![new_burned, rune_id],
         )?;
 
-        // println!(
-        //     "Burned amount for rune id {} updated to: {}",
-        //     new_burned, rune_id
-        // );
         log(&format!(
             "Burned amount for rune id {} updated to: {}",
             new_burned, rune_id
+        ))?;
+
+        Ok(())
+    }
+
+    fn add_rune_burn_event(
+        &mut self,
+        rune_id: &str,
+        tx_id: &str,
+        amount: u128,
+        block_height: u64,
+        timestamp: u32,
+    ) -> Result<(), Error> {
+        self.conn.execute(
+            "INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![tx_id, rune_id, block_height, timestamp, amount.to_string(), "burn"],
+        )?;
+
+        // println!("Burn event for rune {} added: {:?}", rune_id, tx_id);
+        log(&format!(
+            "Burn event for rune {} added: {:?}",
+            rune_id, tx_id
         ))?;
 
         Ok(())
@@ -335,8 +378,9 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
-                cenotapth_messages: row.get("cenotapth_messages")?,
+                cenotapth_message: row.get("cenotapth_message")?,
                 rune_number: rune_number.parse().unwrap(),
+                turbo: row.get("turbo")?,
             })
         })?;
 
@@ -346,19 +390,18 @@ impl<'a> Database for SQLite<'a> {
 
     fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
         self.conn.execute(
-            "INSERT INTO transactions (tx_id, is_artifact, is_runestone, is_cenotapth, cenotapth_messages, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO transactions (tx_id, is_artifact, is_runestone, is_cenotapth, cenotapth_message, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 transaction.tx_id,
                 transaction.is_artifact,
                 transaction.is_runestone,
                 transaction.is_cenotapth,
-                transaction.cenotapth_messages,
+                transaction.cenotapth_message,
                 transaction.timestamp,
                 transaction.block_height
             ],
         )?;
 
-        // println!("Transaction added: {:?}", transaction.tx_id);
         log(&format!("Transaction added: {:?}", transaction.tx_id))?;
 
         Ok(())
@@ -366,7 +409,17 @@ impl<'a> Database for SQLite<'a> {
 
     fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error> {
         self.conn.execute(
-            "INSERT INTO rune_entries (etching_tx_id, block_height, rune_id, name, raw_name, symbol, divisibility, premine, burned, mint_count, timestamp, is_cenotapth, cenotapth_messages, rune_number) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            "
+            BEGIN TRANSACTION;
+
+            INSERT INTO rune_entries (etching_tx_id, block_height, rune_id, name, raw_name, symbol, divisibility, premine, burned, mint_count, timestamp, is_cenotapth, cenotapth_message, rune_number, turbo)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15);
+
+            INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type)
+                VALUES (?16, ?17, ?18, ?19, ?20, ?21);
+            
+            COMMIT;
+            ",
             params![
                 rune_entry.etching_tx_id,
                 rune_entry.block_height,
@@ -380,8 +433,15 @@ impl<'a> Database for SQLite<'a> {
                 rune_entry.mint_count.to_string(),
                 rune_entry.timestamp,
                 rune_entry.is_cenotapth,
-                rune_entry.cenotapth_messages,
-                rune_entry.rune_number.to_string()
+                rune_entry.cenotapth_message,
+                rune_entry.rune_number.to_string(),
+                rune_entry.turbo,
+                rune_entry.etching_tx_id,
+                rune_entry.rune_id,
+                rune_entry.block_height,
+                rune_entry.timestamp,
+                rune_entry.premine.to_string(),
+                "etch"
             ],
         )?;
 
@@ -400,28 +460,43 @@ impl<'a> Database for SQLite<'a> {
             )?;
         }
 
-        // println!("Rune entry added: {:?}", rune_entry.rune_id);
         log(&format!("Rune entry added: {:?}", rune_entry.rune_id))?;
 
         Ok(())
     }
 
     fn add_rune_txo(&mut self, rune_txo: RuneTXO) -> Result<(), Error> {
-        self.conn.execute("INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, address_lowercase, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        self.conn.execute("
+            BEGIN TRANSACTION;
+        
+        INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, is_unspent, spent_tx_id, timestamp, block_height)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);
+
+        INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type, output_index, address)
+            VALUES (?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17);
+            
+            COMMIT;
+        ",
         params![
             rune_txo.tx_id,
             rune_txo.output_index,
             rune_txo.rune_id,
             rune_txo.amount.to_string(),
             rune_txo.address,
-            rune_txo.address_lowercase,
             rune_txo.is_unspent,
             rune_txo.spent_tx_id,
             rune_txo.timestamp,
-            rune_txo.block_height
+            rune_txo.block_height,
+            rune_txo.tx_id,
+            rune_txo.rune_id,
+            rune_txo.block_height,
+            rune_txo.timestamp,
+            rune_txo.amount.to_string(),
+            "transfer",
+            rune_txo.output_index,
+            rune_txo.address
         ])?;
 
-        // println!("Rune transfer for rune {} added: {:?}", rune_transfer.rune_id ,rune_transfer.tx_id);
         log(&format!(
             "Rune transfer for rune {} added: {:?}",
             rune_txo.rune_id, rune_txo.tx_id
@@ -443,7 +518,6 @@ impl<'a> Database for SQLite<'a> {
                 output_index: row.get("output_index")?,
                 value: value.parse().unwrap(),
                 address: row.get("address")?,
-                address_lowercase: row.get("address_lowercase")?,
                 is_unspent: row.get("is_unspent")?,
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
@@ -472,7 +546,6 @@ impl<'a> Database for SQLite<'a> {
             params![spent_tx_id, tx_id, output_index],
         )?;
 
-        // println!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id);
         // log(&format!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id))?;
 
         Ok(())
@@ -480,13 +553,12 @@ impl<'a> Database for SQLite<'a> {
 
     fn add_txo(&mut self, txo: TXO) -> Result<(), Error> {
         self.conn.execute(
-            "INSERT INTO txos (tx_id, output_index, value, address, address_lowercase, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO txos (tx_id, output_index, value, address, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 txo.tx_id,
                 txo.output_index,
                 txo.value.to_string(),
                 txo.address,
-                txo.address_lowercase,
                 txo.is_unspent,
                 txo.spent_tx_id,
                 txo.timestamp,
@@ -494,7 +566,6 @@ impl<'a> Database for SQLite<'a> {
             ],
         )?;
 
-        // println!("TXO added: {}:{} -> {}", txo.tx_id, txo.output_index, txo.value);
         log(&format!(
             "TXO added: {}:{} -> {}",
             txo.tx_id, txo.output_index, txo.value
@@ -506,7 +577,7 @@ impl<'a> Database for SQLite<'a> {
     fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> Result<u128, Error> {
         let mut stmt = self
         .conn
-        .prepare("SELECT amount FROM runes_txos WHERE address_lowercase = ?1 AND rune_id = ?2 AND is_unspent = TRUE")?;
+        .prepare("SELECT amount FROM runes_txos WHERE address = ?1 AND rune_id = ?2 AND is_unspent = TRUE")?;
 
         let result_iter = stmt.query_map(params![address.to_lowercase(), rune_id], |row| {
             let amount: String = row.get("amount")?;
@@ -518,9 +589,9 @@ impl<'a> Database for SQLite<'a> {
     }
 
     fn get_address_balance_list(&self, address: &str) -> Result<HashMap<String, u128>, Error> {
-        let mut stmt = self
-        .conn
-        .prepare("SELECT rune_id, amount FROM runes_txos WHERE address_lowercase = ?1 AND is_unspent = TRUE")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT rune_id, amount FROM runes_txos WHERE address = ?1 AND is_unspent = TRUE",
+        )?;
 
         let result_iter = stmt.query_map(params![address.to_lowercase()], |row| {
             let rune_id: String = row.get("rune_id")?;
@@ -557,7 +628,6 @@ impl<'a> Database for SQLite<'a> {
                 rune_id: row.get("rune_id")?,
                 amount: amount.parse().unwrap(),
                 address: row.get("address")?,
-                address_lowercase: row.get("address_lowercase")?,
                 is_unspent: row.get("is_unspent")?,
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
@@ -568,10 +638,7 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn get_transaction_runes_txo(
-        &self,
-        tx_id: &str
-    ) -> Result<Vec<RuneTXO>, Error> {
+    fn get_transaction_runes_txo(&self, tx_id: &str) -> Result<Vec<RuneTXO>, Error> {
         let mut stmt = self
             .conn
             .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 OR spent_tx_id = ?1")?;
@@ -585,7 +652,6 @@ impl<'a> Database for SQLite<'a> {
                 rune_id: row.get("rune_id")?,
                 amount: amount.parse().unwrap(),
                 address: row.get("address")?,
-                address_lowercase: row.get("address_lowercase")?,
                 is_unspent: row.get("is_unspent")?,
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
@@ -599,7 +665,7 @@ impl<'a> Database for SQLite<'a> {
     fn get_address_runes_txo(&self, address: &str) -> Result<Vec<RuneTXO>, Error> {
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM runes_txos WHERE address_lowercase = ?1")?;
+            .prepare("SELECT * FROM runes_txos WHERE address = ?1")?;
 
         let result_iter = stmt
             .query_map(params![address.to_lowercase()], |row| {
@@ -611,7 +677,6 @@ impl<'a> Database for SQLite<'a> {
                     rune_id: row.get("rune_id")?,
                     amount: amount.parse().unwrap(),
                     address: row.get("address")?,
-                    address_lowercase: row.get("address_lowercase")?,
                     is_unspent: row.get("is_unspent")?,
                     spent_tx_id: row.get("spent_tx_id")?,
                     timestamp: row.get("timestamp")?,
@@ -629,7 +694,7 @@ impl<'a> Database for SQLite<'a> {
         rune_id: &str,
     ) -> Result<Vec<RuneTXO>, Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT * FROM runes_txos WHERE address_lowercase = ?1 AND rune_id = ?2 AND is_unspent = TRUE",
+            "SELECT * FROM runes_txos WHERE address = ?1 AND rune_id = ?2 AND is_unspent = TRUE",
         )?;
 
         let result_iter = stmt
@@ -642,7 +707,6 @@ impl<'a> Database for SQLite<'a> {
                     rune_id: row.get("rune_id")?,
                     amount: amount.parse().unwrap(),
                     address: row.get("address")?,
-                    address_lowercase: row.get("address_lowercase")?,
                     is_unspent: row.get("is_unspent")?,
                     spent_tx_id: row.get("spent_tx_id")?,
                     timestamp: row.get("timestamp")?,
@@ -691,7 +755,7 @@ impl<'a> Database for SQLite<'a> {
                     is_artifact: row.get("is_artifact")?,
                     is_runestone: row.get("is_runestone")?,
                     is_cenotapth: row.get("is_cenotapth")?,
-                    cenotapth_messages: row.get("cenotapth_messages")?,
+                    cenotapth_message: row.get("cenotapth_message")?,
                     timestamp: row.get("timestamp")?,
                     block_height: row.get("block_height")?,
                 })
@@ -712,7 +776,7 @@ impl<'a> Database for SQLite<'a> {
                     is_artifact: row.get("is_artifact")?,
                     is_runestone: row.get("is_runestone")?,
                     is_cenotapth: row.get("is_cenotapth")?,
-                    cenotapth_messages: row.get("cenotapth_messages")?,
+                    cenotapth_message: row.get("cenotapth_message")?,
                     timestamp: row.get("timestamp")?,
                     block_height: row.get("block_height")?,
                 })
@@ -767,8 +831,9 @@ impl<'a> Database for SQLite<'a> {
                 mint_count: mint_count.parse().unwrap(),
                 timestamp: row.get("timestamp")?,
                 is_cenotapth: row.get("is_cenotapth")?,
-                cenotapth_messages: row.get("cenotapth_messages")?,
+                cenotapth_message: row.get("cenotapth_message")?,
                 rune_number: rune_number.parse().unwrap(),
+                turbo: row.get("turbo")?,
             })
         })?;
 
@@ -776,8 +841,6 @@ impl<'a> Database for SQLite<'a> {
     }
 
     fn set_block_height(&mut self, new_block_height: u64) -> Result<(), Error> {
-        // let block_height = self.get_block_height()?;
-
         let mut stmt = self.conn.prepare("SELECT block_height FROM statistics")?;
         let result_iter = stmt.query_map([], |row| {
             let block_height: u64 = row.get("block_height")?;
@@ -798,6 +861,162 @@ impl<'a> Database for SQLite<'a> {
                 params![new_block_height],
             )?;
         }
+
+        Ok(())
+    }
+
+    fn get_db_indexes(&self) -> Result<Vec<SQLiteIndex>, Error> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                type, 
+                name, 
+                tbl_name
+            FROM
+                sqlite_master
+            WHERE
+                type= 'index';",
+        )?;
+
+        let result_iter = stmt.query_map([], |row| {
+            Ok(SQLiteIndex {
+                name: row.get("name")?,
+                tbl_name: row.get("tbl_name")?,
+            })
+        })?;
+
+        let indexes: Vec<SQLiteIndex> = result_iter.map(|r| r.unwrap()).collect();
+
+        Ok(indexes)
+    }
+
+    fn create_db_indexes(&self) -> Result<(), Error> {
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_rune_entries_rune_id
+                ON rune_entries(rune_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_rune_entries_etching_tx_id
+                ON rune_entries(etching_tx_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_rune_entries_raw_name
+                ON rune_entries(raw_name);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_terms_rune_id
+                ON terms(rune_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_txos_tx_id_output_index
+                ON txos(tx_id, output_index);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_runes_txos_tx_id_output_index
+                ON runes_txos(tx_id, output_index);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_runes_txos_address_rune_id_is_unspent
+                ON runes_txos(address, rune_id, is_unspent);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_runes_txos_address_is_unspent
+                ON runes_txos(address, is_unspent);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_runes_txos_tx_id
+                ON runes_txos(tx_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_runes_txos_spent_tx_id
+                ON runes_txos(spent_tx_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_runes_txos_address
+                ON runes_txos(address);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+                CREATE INDEX IF NOT EXISTS idx_transactions_tx_id
+                ON transactions(tx_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_tx_id
+            ON rune_events(tx_id);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_address
+            ON rune_events(address);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_block_height
+            ON rune_events(block_height);
+        ",
+            (),
+        )?;
+
+        self.conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_rune_id
+            ON rune_events(rune_id);
+        ",
+            (),
+        )?;
 
         Ok(())
     }

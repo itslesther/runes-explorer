@@ -26,6 +26,7 @@ impl<'a> RuneUpdater<'a> {
         let artifact = Runestone::decipher(tx);
 
         let mut unallocated = self.unallocated(tx)?;
+
         let mut allocated: Vec<HashMap<RuneId, Lot>> = vec![HashMap::new(); tx.output.len()];
 
         self.mark_txs_as_spent(tx, tx_id)?;
@@ -35,7 +36,7 @@ impl<'a> RuneUpdater<'a> {
             self.add_txo(tx, tx_id)?;
 
             if let Some(id) = artifact.mint() {
-                if let Some(amount) = self.mint(id)? {
+                if let Some(amount) = self.mint(id, tx_id)? {
                     *unallocated.entry(id).or_default() += amount;
                 }
             }
@@ -88,23 +89,25 @@ impl<'a> RuneUpdater<'a> {
                             })
                             .collect::<Vec<usize>>();
 
-                        if amount == 0 {
-                            // if amount is zero, divide balance between eligible outputs
-                            let amount = *balance / destinations.len() as u128;
-                            let remainder =
-                                usize::try_from(*balance % destinations.len() as u128).unwrap();
+                        if !destinations.is_empty() {
+                            if amount == 0 {
+                                // if amount is zero, divide balance between eligible outputs
+                                let amount = *balance / destinations.len() as u128;
+                                let remainder =
+                                    usize::try_from(*balance % destinations.len() as u128).unwrap();
 
-                            for (i, output) in destinations.iter().enumerate() {
-                                allocate(
-                                    balance,
-                                    if i < remainder { amount + 1 } else { amount },
-                                    *output,
-                                );
-                            }
-                        } else {
-                            // if amount is non-zero, distribute amount to eligible outputs
-                            for output in destinations {
-                                allocate(balance, amount.min(*balance), output);
+                                for (i, output) in destinations.iter().enumerate() {
+                                    allocate(
+                                        balance,
+                                        if i < remainder { amount + 1 } else { amount },
+                                        *output,
+                                    );
+                                }
+                            } else {
+                                // if amount is non-zero, distribute amount to eligible outputs
+                                for output in destinations {
+                                    allocate(balance, amount.min(*balance), output);
+                                }
                             }
                         }
                     } else {
@@ -168,7 +171,6 @@ impl<'a> RuneUpdater<'a> {
         }
 
         // update outpoint balances
-
         for (vout, balances) in allocated.into_iter().enumerate() {
             if balances.is_empty() {
                 continue;
@@ -193,6 +195,13 @@ impl<'a> RuneUpdater<'a> {
         // increment entries with burned runes
         for (id, amount) in burned {
             *self.burned.entry(id).or_default() += amount;
+            self.database.add_rune_burn_event(
+                &id.to_string(),
+                tx_id,
+                amount.n(),
+                self.block_height.into(),
+                self.block_time,
+            )?;
         }
 
         Ok(())
@@ -225,16 +234,8 @@ impl<'a> RuneUpdater<'a> {
             } else {
                 false
             },
-            cenotapth_messages: if let Artifact::Cenotaph(cenotaph) = artifact {
-                // cenotapth_messages: if let Some(Artifact::Cenotaph(cenotaph)) = artifact {
-                Some(
-                    cenotaph
-                        .flaws()
-                        .iter()
-                        .map(|flaw| flaw.to_string())
-                        .collect::<Vec<String>>()
-                        .join(","),
-                )
+            cenotapth_message: if let Artifact::Cenotaph(cenotaph) = artifact {
+                cenotaph.flaw.map(|flaw| flaw.to_string())
             } else {
                 None
             },
@@ -250,8 +251,7 @@ impl<'a> RuneUpdater<'a> {
                 output_index: vout as u32,
                 block_height: self.block_height.into(),
                 value: tx.output[vout].value as u128,
-                address: utils::output_to_address(&tx.output[vout], self.chain),
-                address_lowercase: utils::output_to_address(&tx.output[vout], self.chain)
+                address: utils::output_to_address(&tx.output[vout], self.chain)
                     .map(|s| s.to_lowercase()),
                 is_unspent: true,
                 spent_tx_id: None,
@@ -275,8 +275,7 @@ impl<'a> RuneUpdater<'a> {
                 block_height: self.block_height.into(),
                 rune_id: id.to_string(),
                 amount: balance.n(),
-                address: utils::output_to_address(&tx.output[vout], self.chain),
-                address_lowercase: utils::output_to_address(&tx.output[vout], self.chain)
+                address: utils::output_to_address(&tx.output[vout], self.chain)
                     .map(|s| s.to_lowercase()),
                 is_unspent: true,
                 spent_tx_id: None,
@@ -311,15 +310,9 @@ impl<'a> RuneUpdater<'a> {
                 premine: 0,
                 timestamp: self.block_time,
                 is_cenotapth: true,
-                cenotapth_messages: Some(
-                    cenotaph
-                        .flaws()
-                        .iter()
-                        .map(|flaw| flaw.to_string())
-                        .collect::<Vec<String>>()
-                        .join(","),
-                ),
+                cenotapth_message: cenotaph.flaw.map(|flaw| flaw.to_string()),
                 rune_number: rune_count,
+                turbo: false,
             },
             Artifact::Runestone(Runestone { etching, .. }) => {
                 let Etching {
@@ -328,6 +321,7 @@ impl<'a> RuneUpdater<'a> {
                     premine,
                     spacers,
                     symbol,
+                    turbo,
                     ..
                 } = etching.unwrap();
 
@@ -362,8 +356,9 @@ impl<'a> RuneUpdater<'a> {
                     mint_count: 0,
                     timestamp: self.block_time,
                     is_cenotapth: false,
-                    cenotapth_messages: None,
+                    cenotapth_message: None,
                     rune_number: rune_count,
+                    turbo,
                 }
             }
         };
@@ -424,7 +419,7 @@ impl<'a> RuneUpdater<'a> {
         )))
     }
 
-    fn mint(&mut self, id: RuneId) -> Result<Option<Lot>> {
+    fn mint(&mut self, id: RuneId, tx_id: &str) -> Result<Option<Lot>> {
         let Some(rune_entry) = self.database.get_rune_by_id(&id.to_string())? else {
             return Ok(None);
         };
@@ -434,7 +429,7 @@ impl<'a> RuneUpdater<'a> {
         };
 
         self.database
-            .update_rune_entry_mint_count(&id.to_string())?;
+            .update_rune_entry_mint_count(&id.to_string(), tx_id, amount, self.block_height.into(), self.block_time)?;
 
         Ok(Some(Lot(amount)))
     }
@@ -503,20 +498,34 @@ impl<'a> RuneUpdater<'a> {
                     .await
                 // .into_option()?
                 else {
-                    panic!("input not in UTXO set: {}", input.previous_output);
+                    panic!(
+                        "can't get input transaction: {}",
+                        input.previous_output.txid
+                    );
                 };
 
                 let taproot = tx_info.data.output[input.previous_output.vout.into_usize()]
                     .script_pubkey
                     .is_v1_p2tr();
 
-                let mature = tx_info
-                    .raw
-                    .confirmations
-                    .map(|confirmations| confirmations >= Runestone::COMMIT_INTERVAL.into())
-                    .unwrap_or_default();
+                if !taproot {
+                    continue;
+                }
 
-                if taproot && mature {
+                let commit_tx_height = self
+                    .btc_rpc
+                    .get_block_header(&tx_info.raw.blockhash.unwrap())
+                    .await
+                    .unwrap()
+                    .height;
+
+                let confirmations = self
+                    .block_height
+                    .checked_sub(commit_tx_height.try_into().unwrap())
+                    .unwrap()
+                    + 1;
+
+                if confirmations >= Runestone::COMMIT_CONFIRMATIONS.into() {
                     return Ok(true);
                 }
             }

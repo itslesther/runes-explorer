@@ -154,11 +154,12 @@ impl BTCRPC {
     }
 
     pub async fn get_raw_transaction(&self, id: &str) -> Result<RawTxObj, Error> {
-        let response: Response = self.rpc_request(&RPCRequest::new(
-            "getrawtransaction",
-            &[RPCValue::Str(id.to_string()), RPCValue::Int(1)],
-        ))
-        .await?;
+        let response: Response = self
+            .rpc_request(&RPCRequest::new(
+                "getrawtransaction",
+                &[RPCValue::Str(id.to_string()), RPCValue::Int(1)],
+            ))
+            .await?;
 
         let result = response.json::<RPCResponse<RawTxObj>>().await?.result;
         Ok(result)
@@ -167,12 +168,7 @@ impl BTCRPC {
     pub async fn get_latest_validated_block_height(&self) -> Result<u32, Error> {
         let block_hash = self.get_best_block_hash().await?;
 
-        let response = self.rpc_request(&RPCRequest::new(
-            "getblockheader",
-            &[RPCValue::Str(block_hash), RPCValue::Bool(true)],
-        ))
-        .await?;
-        let block_header = response.json::<RPCResponse<RawBlockHeader>>().await?.result;
+        let block_header = self.get_block_header(&block_hash).await?;
 
         Ok(block_header.height)
     }
@@ -186,11 +182,12 @@ impl BTCRPC {
     }
 
     pub async fn get_block_by_height(&self, block_height: u32) -> Result<Block, Error> {
-        let response = self.rpc_request(&RPCRequest::new(
-            "getblockhash",
-            &[RPCValue::Int(block_height as usize)],
-        ))
-        .await?;
+        let response = self
+            .rpc_request(&RPCRequest::new(
+                "getblockhash",
+                &[RPCValue::Int(block_height as usize)],
+            ))
+            .await?;
 
         let block_hash = response.json::<RPCResponse<String>>().await?.result;
 
@@ -200,11 +197,12 @@ impl BTCRPC {
     }
 
     pub async fn get_block_by_hash(&self, block_hash: &str) -> Result<Block, Error> {
-        let response = self.rpc_request(&RPCRequest::new(
-            "getblock",
-            &[RPCValue::Str(block_hash.to_string()), RPCValue::Int(0)],
-        ))
-        .await?;
+        let response = self
+            .rpc_request(&RPCRequest::new(
+                "getblock",
+                &[RPCValue::Str(block_hash.to_string()), RPCValue::Int(0)],
+            ))
+            .await?;
 
         let result = response.json::<RPCResponse<String>>().await?.result;
 
@@ -269,14 +267,37 @@ impl BTCRPC {
     // }
 
     pub async fn get_best_block_hash(&self) -> Result<String, Error> {
-        let response = self.rpc_request(&RPCRequest::new("getbestblockhash", &[])).await?;
+        let response = self
+            .rpc_request(&RPCRequest::new("getbestblockhash", &[]))
+            .await?;
 
         let result = response.json::<RPCResponse<String>>().await?.result;
 
         Ok(result)
     }
 
-    async fn rpc_request(&self,request: &RPCRequest) -> Result<Response, Error> {
+    pub async fn get_block_header(&self, block_hash: &str) -> Result<RawBlockHeader, Error> {
+        let response = self
+            .rpc_request(&RPCRequest::new(
+                "getblockheader",
+                &[RPCValue::Str(block_hash.to_string()), RPCValue::Bool(true)],
+            ))
+            .await?;
+        let block_header = response.json::<RPCResponse<RawBlockHeader>>().await?.result;
+
+        Ok(block_header)
+    }
+
+    pub async fn get_block_count(&self) -> Result<u32, Error> {
+        let response = self
+            .rpc_request(&RPCRequest::new("getblockcount", &[]))
+            .await?;
+        let block_height = response.json::<RPCResponse<u32>>().await?.result;
+
+        Ok(block_height)
+    }
+
+    async fn rpc_request(&self, request: &RPCRequest) -> Result<Response, Error> {
         let client = reqwest::Client::new();
 
         let response = client

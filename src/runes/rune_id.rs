@@ -99,6 +99,7 @@ mod tests {
   #[test]
   fn delta() {
     let mut expected = [
+      RuneId { block: 3, tx: 1 },
       RuneId { block: 4, tx: 2 },
       RuneId { block: 1, tx: 2 },
       RuneId { block: 1, tx: 1 },
@@ -115,6 +116,7 @@ mod tests {
         RuneId { block: 1, tx: 2 },
         RuneId { block: 2, tx: 0 },
         RuneId { block: 3, tx: 1 },
+        RuneId { block: 3, tx: 1 },
         RuneId { block: 4, tx: 2 },
       ]
     );
@@ -126,7 +128,7 @@ mod tests {
       previous = id;
     }
 
-    assert_eq!(deltas, [(1, 1), (0, 1), (1, 0), (1, 1), (1, 2)]);
+    assert_eq!(deltas, [(1, 1), (0, 1), (1, 0), (1, 1), (0, 0), (1, 2)]);
 
     let mut previous = RuneId::default();
     let mut actual = Vec::new();

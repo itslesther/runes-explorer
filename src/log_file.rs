@@ -1,5 +1,5 @@
 use anyhow::Error;
-use chrono;
+use chrono::Utc;
 use colored::Colorize;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -35,16 +35,12 @@ impl LogFile {
 }
 
 pub fn log(data: &str) -> Result<(), Error> {
-    let mut data_file = OpenOptions::new().append(true).open("indexer.log")?;
+    // let mut data_file = OpenOptions::new().append(true).open("indexer.log")?;
 
-    data_file.write(&format!("[{}] {}\n", chrono::offset::Utc::now(), data).as_bytes())?;
+    // data_file.write(&format!("[{}] {}\n", chrono::offset::Utc::now(), data).as_bytes())?;
 
-    data_file.flush()?;
+    // data_file.flush()?;
 
-    println!(
-        "[{}] {}",
-        chrono::offset::Utc::now().to_string().green().bold(),
-        data
-    );
+    println!("[{}] {}", Utc::now().to_string().green().bold(), data);
     Ok(())
 }

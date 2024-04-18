@@ -2,7 +2,6 @@ use crate::adapters::sqlite::SQLite;
 use crate::server::schemas::*;
 use crate::{adapters::db::Database, AppState};
 use actix_web::{get, web, HttpResponse, Responder};
-use bitcoin::transaction;
 
 #[utoipa::path(
     responses(
@@ -198,7 +197,7 @@ async fn get_transaction_with_runes_txo(
                 .collect(),
             is_runestone: transaction.is_runestone,
             is_cenotapth: transaction.is_cenotapth,
-            cenotapth_messages: transaction.cenotapth_messages,
+            cenotapth_message: transaction.cenotapth_message,
             timestamp: transaction.timestamp,
             etched_rune_id: rune_entry.map(|r| r.rune_id),
         },

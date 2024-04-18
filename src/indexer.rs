@@ -1,14 +1,12 @@
-use std::collections::HashMap;
-
+use super::log_file::log;
 use super::{adapters::sqlite::SQLite, btc_rpc::BTCRPC, rune_updaters::RuneUpdater};
 use crate::adapters::db::Database;
-use bitcoin::network::constants::Network;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
-
-use super::log_file::log;
+use crate::runes::Runestone;
 use anyhow::Error;
+use bitcoin::network::constants::Network;
+use chrono::Utc;
 use rusqlite::Connection;
+use std::collections::HashMap;
 
 pub struct Indexer<'a> {
     pub chain: Network,
@@ -18,7 +16,7 @@ pub struct Indexer<'a> {
     // database: SQLite<'a>,
 }
 
-impl <'a> Indexer<'a>  {
+impl<'a> Indexer<'a> {
     pub async fn index_blocks(&self) -> Result<(), Error> {
         log("Indexing blocks")?;
         // let conn = &pool.get().unwrap();
@@ -32,7 +30,7 @@ impl <'a> Indexer<'a>  {
         let halving_block_height: u32 = 2583205;
 
         // let end_block_height: u32 = halving_block_height + 50; //endpoint testing purposes
-        let end_block_height: u32 = btc_rpc.get_latest_validated_block_height().await?;
+        let end_block_height: u32 = btc_rpc.get_block_count().await?;
         log(&format!("Current block height: {}", end_block_height))?;
 
         let mut start_block_height: u32 = u32::try_from(database.get_block_height()?)?;
@@ -60,12 +58,33 @@ impl <'a> Indexer<'a>  {
                 * 100.0;
 
             log(&format!(
-                "{}. Indexing block: {}",
-                format!("{:.1$}% completed", percentage, 2),
-                block_height
+                "{}% completed. Indexing block: {} of {}",
+                format!("{:.1$}", percentage, 2),
+                block_height,
+                end_block_height
             ))?;
 
+            let start_block_fetch_time = Utc::now();
+
             let block = btc_rpc.get_block_by_height(block_height).await?;
+
+            let end_block_fetch_time = Utc::now();
+            let artifact_tx_count = block
+                .txdata
+                .iter()
+                .filter(|tx| Runestone::decipher(tx).is_some())
+                .count();
+
+            let total_tx_count = block.txdata.len();
+
+            log(&format!(
+                "Block fetched in: {} seconds. Indexing Artifact txs: {} out of {}",
+                end_block_fetch_time
+                    .signed_duration_since(start_block_fetch_time)
+                    .num_seconds(),
+                artifact_tx_count,
+                total_tx_count,
+            ))?;
 
             let mut rune_updater = RuneUpdater {
                 database,
@@ -77,6 +96,13 @@ impl <'a> Indexer<'a>  {
             };
 
             for (tx_index, tx) in block.txdata.iter().enumerate() {
+                let tx_percentage = ((tx_index + 1) as f32 / total_tx_count as f32) * 100.0;
+                log(&format!(
+                    "{}% transactions indexed on block: {}",
+                    format!("{:.1$}", tx_percentage, 2),
+                    block_height
+                ))?;
+
                 rune_updater
                     .index_runes(
                         u32::try_from(tx_index)?,

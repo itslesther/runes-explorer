@@ -81,7 +81,7 @@ pub struct TransactionWithRunesTXO {
     // pub is_artifact: bool,
     pub is_runestone: bool,
     pub is_cenotapth: bool,
-    pub cenotapth_messages: Option<String>,
+    pub cenotapth_message: Option<String>,
     pub timestamp: u32,
     pub etched_rune_id: Option<String>,
 }
