@@ -6,18 +6,18 @@ use anyhow::Error;
 use rusqlite::{params, Connection, Result};
 
 #[derive(Debug, Clone, Copy)]
-pub struct SQLite<'a> {
-    pub conn: &'a Connection,
+pub struct SQLite {
+    // pub conn: &'a Connection,
     // pub log_file: LogFile,
 }
 
-impl<'a> SQLite<'a> {
+impl SQLite {
     // pub fn init(conn: &'a Connection) -> SQLite<'a> {
     //     // SQLite { conn, log_file: LogFile::new() }
     //     SQLite { conn }
     // }
-    pub fn init_tables(&self) -> Result<(), Error> {
-        self.conn.execute(
+    pub fn init_tables(&self, conn: &mut Connection) -> Result<(), Error> {
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_entries (
             etching_tx_id TEXT NOT NULL,
             block_height INTEGER NOT NULL,
@@ -38,7 +38,7 @@ impl<'a> SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS terms (
             rune_id TEXT NOT NULL,
             amount TEXT,
@@ -51,7 +51,7 @@ impl<'a> SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS transactions (
             tx_id TEXT PRIMARY KEY,
             block_height INTEGER NOT NULL,
@@ -65,7 +65,7 @@ impl<'a> SQLite<'a> {
         )?;
 
         // event_type: etch, mint, burn, transfer
-        self.conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS rune_events (
             tx_id TEXT NOT NULL,
             rune_id TEXT NOT NULL,
@@ -79,7 +79,7 @@ impl<'a> SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS runes_txos (
             tx_id TEXT NOT NULL,
             output_index INTEGER NOT NULL,
@@ -94,7 +94,7 @@ impl<'a> SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS txos (
             tx_id TEXT NOT NULL,
             output_index INTEGER NOT NULL,
@@ -108,26 +108,28 @@ impl<'a> SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS statistics (
             block_height INTEGER NOT NULL
             )",
             (),
         )?;
 
-        self.create_db_indexes()?;
+        self.create_db_indexes(conn)?;
 
         log("Tables initialized")?;
 
         Ok(())
     }
-}
+    // }
 
-impl<'a> Database for SQLite<'a> {
-    fn get_rune_by_id(&self, rune_id: &str) -> Result<Option<RuneEntry>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM rune_entries WHERE rune_id = ?1")?;
+    // impl<'a> Database for SQLite<'a> {
+    pub fn get_rune_by_id(
+        &self,
+        conn: &mut Connection,
+        rune_id: &str,
+    ) -> Result<Option<RuneEntry>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM rune_entries WHERE rune_id = ?1")?;
 
         let result_iter = stmt.query_map(params![rune_id], |row| {
             let symbol: Option<String> = row.get("symbol")?;
@@ -136,9 +138,7 @@ impl<'a> Database for SQLite<'a> {
             let mint_count: String = row.get("mint_count")?;
             let rune_number: String = row.get("rune_number")?;
 
-            let mut terms_stmt = self
-                .conn
-                .prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
+            let mut terms_stmt = conn.prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
 
             let terms_result_iter = terms_stmt.query_map(params![rune_id], |row| {
                 let amount: Option<String> = row.get("amount")?;
@@ -180,10 +180,13 @@ impl<'a> Database for SQLite<'a> {
         Ok(rune_entry)
     }
 
-    fn get_rune_by_etched_tx_id(&self, etching_tx_id: &str) -> Result<Option<RuneEntry>, Error> {
-        let mut stmt: rusqlite::Statement<'_> = self
-            .conn
-            .prepare("SELECT * FROM rune_entries WHERE etching_tx_id = ?1")?;
+    pub fn get_rune_by_etched_tx_id(
+        &self,
+        conn: &mut Connection,
+        etching_tx_id: &str,
+    ) -> Result<Option<RuneEntry>, Error> {
+        let mut stmt: rusqlite::Statement<'_> =
+            conn.prepare("SELECT * FROM rune_entries WHERE etching_tx_id = ?1")?;
 
         let result_iter = stmt.query_map(params![etching_tx_id], |row| {
             let symbol: Option<String> = row.get("symbol")?;
@@ -193,9 +196,7 @@ impl<'a> Database for SQLite<'a> {
             let rune_number: String = row.get("rune_number")?;
             let rune_id: String = row.get("rune_id")?;
 
-            let mut terms_stmt = self
-                .conn
-                .prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
+            let mut terms_stmt = conn.prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
 
             let terms_result_iter = terms_stmt.query_map(params![rune_id], |row| {
                 let amount: Option<String> = row.get("amount")?;
@@ -237,42 +238,45 @@ impl<'a> Database for SQLite<'a> {
         Ok(rune_entry)
     }
 
-    fn update_rune_entry_mint_count(
+    pub fn update_rune_entry_mint_count(
         &mut self,
+        conn: &mut Connection,
         rune_id: &str,
         tx_id: &str,
         amount: u128,
         block_height: u64,
         timestamp: u32,
     ) -> Result<(), Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT mint_count FROM rune_entries WHERE rune_id = ?1")?;
+        let new_mint_count: String;
 
-        let result_iter = stmt.query_map(params![rune_id], |row| {
-            let mint_count: String = row.get("mint_count")?;
-            let new_mint_count: String = (mint_count.parse::<u128>().unwrap() + 1).to_string();
+        {
+            let mut stmt =
+                conn.prepare("SELECT mint_count FROM rune_entries WHERE rune_id = ?1")?;
 
-            Ok(new_mint_count)
-        })?;
+            let result_iter = stmt.query_map(params![rune_id], |row| {
+                let mint_count: String = row.get("mint_count")?;
+                let new_mint_count_temp: String =
+                    (mint_count.parse::<u128>().unwrap() + 1).to_string();
 
-        let new_mint_count: String = result_iter.map(|r| r.unwrap()).next().unwrap();
+                Ok(new_mint_count_temp)
+            })?;
 
-        self.conn.execute(
-            "
-                BEGIN TRANSACTION;
+            new_mint_count = result_iter.map(|r| r.unwrap()).next().unwrap();
+        }
 
-            UPDATE rune_entries SET mint_count = ?1
-                WHERE rune_id = ?2;
+        let tx = conn.transaction()?;
 
-            INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type)
-                VALUES (?3, ?4, ?5, ?6, ?7, ?8);
-
-                COMMIT;
-            ",
-            params![new_mint_count, rune_id, tx_id, rune_id, block_height, timestamp, amount.to_string(), "mint"],
+        tx.execute(
+            "UPDATE rune_entries SET mint_count = ?1 WHERE rune_id = ?2",
+            params![new_mint_count, rune_id],
         )?;
 
+        tx.execute(
+            "INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![tx_id, rune_id, block_height, timestamp, amount.to_string(), "mint"],
+        )?;
+
+        tx.commit()?;
 
         log(&format!(
             "Mint count for rune id {} updated to: {}",
@@ -282,10 +286,13 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn increase_rune_entry_burned(&mut self, rune_id: &str, amount: u128) -> Result<(), Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT burned FROM rune_entries WHERE rune_id = ?1")?;
+    pub fn increase_rune_entry_burned(
+        &mut self,
+        conn: &mut Connection,
+        rune_id: &str,
+        amount: u128,
+    ) -> Result<(), Error> {
+        let mut stmt = conn.prepare("SELECT burned FROM rune_entries WHERE rune_id = ?1")?;
 
         let result_iter = stmt.query_map(params![rune_id], |row| {
             let burned: String = row.get("burned")?;
@@ -296,7 +303,7 @@ impl<'a> Database for SQLite<'a> {
 
         let new_burned = result_iter.into_iter().next().unwrap().unwrap();
 
-        self.conn.execute(
+        conn.execute(
             "UPDATE rune_entries SET burned = ?1 WHERE rune_id = ?2",
             params![new_burned, rune_id],
         )?;
@@ -309,15 +316,16 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn add_rune_burn_event(
+    pub fn add_rune_burn_event(
         &mut self,
+        conn: &mut Connection,
         rune_id: &str,
         tx_id: &str,
         amount: u128,
         block_height: u64,
         timestamp: u32,
     ) -> Result<(), Error> {
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![tx_id, rune_id, block_height, timestamp, amount.to_string(), "burn"],
         )?;
@@ -331,10 +339,12 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn get_rune_by_raw_name(&self, name: &str) -> Result<Option<RuneEntry>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM rune_entries WHERE raw_name = ?1")?;
+    pub fn get_rune_by_raw_name(
+        &self,
+        conn: &mut Connection,
+        name: &str,
+    ) -> Result<Option<RuneEntry>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM rune_entries WHERE raw_name = ?1")?;
 
         let result_iter = stmt.query_map(params![name], |row| {
             let symbol: Option<String> = row.get("symbol")?;
@@ -344,9 +354,7 @@ impl<'a> Database for SQLite<'a> {
             let rune_number: String = row.get("rune_number")?;
             let rune_id: String = row.get("rune_id")?;
 
-            let mut terms_stmt = self
-                .conn
-                .prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
+            let mut terms_stmt = conn.prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
 
             let terms_result_iter = terms_stmt.query_map(params![rune_id], |row| {
                 let amount: Option<String> = row.get("amount")?;
@@ -388,8 +396,12 @@ impl<'a> Database for SQLite<'a> {
         Ok(rune_entry)
     }
 
-    fn add_transaction(&mut self, transaction: Transaction) -> Result<(), Error> {
-        self.conn.execute(
+    pub fn add_transaction(
+        &mut self,
+        conn: &mut Connection,
+        transaction: Transaction,
+    ) -> Result<(), Error> {
+        conn.execute(
             "INSERT INTO transactions (tx_id, is_artifact, is_runestone, is_cenotapth, cenotapth_message, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 transaction.tx_id,
@@ -407,19 +419,15 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn add_rune_entry(&mut self, rune_entry: RuneEntry) -> Result<(), Error> {
-        self.conn.execute(
-            "
-            BEGIN TRANSACTION;
+    pub fn add_rune_entry(
+        &mut self,
+        conn: &mut Connection,
+        rune_entry: RuneEntry,
+    ) -> Result<(), Error> {
+        let tx = conn.transaction()?;
 
-            INSERT INTO rune_entries (etching_tx_id, block_height, rune_id, name, raw_name, symbol, divisibility, premine, burned, mint_count, timestamp, is_cenotapth, cenotapth_message, rune_number, turbo)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15);
-
-            INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type)
-                VALUES (?16, ?17, ?18, ?19, ?20, ?21);
-            
-            COMMIT;
-            ",
+        tx.execute(
+            "INSERT INTO rune_entries (etching_tx_id, block_height, rune_id, name, raw_name, symbol, divisibility, premine, burned, mint_count, timestamp, is_cenotapth, cenotapth_message, rune_number, turbo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 rune_entry.etching_tx_id,
                 rune_entry.block_height,
@@ -435,18 +443,12 @@ impl<'a> Database for SQLite<'a> {
                 rune_entry.is_cenotapth,
                 rune_entry.cenotapth_message,
                 rune_entry.rune_number.to_string(),
-                rune_entry.turbo,
-                rune_entry.etching_tx_id,
-                rune_entry.rune_id,
-                rune_entry.block_height,
-                rune_entry.timestamp,
-                rune_entry.premine.to_string(),
-                "etch"
+                rune_entry.turbo
             ],
         )?;
 
         if let Some(terms) = rune_entry.terms {
-            self.conn.execute(
+            tx.execute(
                 "INSERT INTO terms (rune_id, amount, cap, height_start, height_end, offset_start, offset_end) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     rune_entry.rune_id,
@@ -460,23 +462,21 @@ impl<'a> Database for SQLite<'a> {
             )?;
         }
 
+        tx.execute(
+            "INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![rune_entry.etching_tx_id, rune_entry.rune_id, rune_entry.block_height, rune_entry.timestamp, rune_entry.premine.to_string(), "etch"],
+        )?;
+
+        tx.commit()?;
+
         log(&format!("Rune entry added: {:?}", rune_entry.rune_id))?;
 
         Ok(())
     }
 
-    fn add_rune_txo(&mut self, rune_txo: RuneTXO) -> Result<(), Error> {
-        self.conn.execute("
-            BEGIN TRANSACTION;
-        
-        INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, is_unspent, spent_tx_id, timestamp, block_height)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);
-
-        INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type, output_index, address)
-            VALUES (?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17);
-            
-            COMMIT;
-        ",
+    pub fn add_rune_txo(&mut self, conn: &mut Connection, rune_txo: RuneTXO) -> Result<(), Error> {
+        let tx = conn.transaction()?;
+        tx.execute("INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             rune_txo.tx_id,
             rune_txo.output_index,
@@ -486,16 +486,15 @@ impl<'a> Database for SQLite<'a> {
             rune_txo.is_unspent,
             rune_txo.spent_tx_id,
             rune_txo.timestamp,
-            rune_txo.block_height,
-            rune_txo.tx_id,
-            rune_txo.rune_id,
-            rune_txo.block_height,
-            rune_txo.timestamp,
-            rune_txo.amount.to_string(),
-            "transfer",
-            rune_txo.output_index,
-            rune_txo.address
+            rune_txo.block_height
         ])?;
+
+        tx.execute(
+            "INSERT INTO rune_events (tx_id, rune_id, block_height, timestamp, amount, event_type, output_index, address) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![rune_txo.tx_id, rune_txo.rune_id, rune_txo.block_height, rune_txo.timestamp, rune_txo.amount.to_string(), "transfer", rune_txo.output_index, rune_txo.address],
+        )?;
+
+        tx.commit()?;
 
         log(&format!(
             "Rune transfer for rune {} added: {:?}",
@@ -505,10 +504,13 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn get_txo(&mut self, tx_id: &str, output_index: u32) -> Result<Option<TXO>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM txos WHERE tx_id = ?1 AND output_index = ?2")?;
+    pub fn get_txo(
+        &mut self,
+        conn: &mut Connection,
+        tx_id: &str,
+        output_index: u32,
+    ) -> Result<Option<TXO>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM txos WHERE tx_id = ?1 AND output_index = ?2")?;
 
         let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
             let value: String = row.get("value")?;
@@ -530,18 +532,21 @@ impl<'a> Database for SQLite<'a> {
         Ok(txo)
     }
 
-    fn mark_utxo_as_spent(
+    pub fn mark_utxo_as_spent(
         &mut self,
+        conn: &mut Connection,
         tx_id: &str,
         output_index: u32,
         spent_tx_id: &str,
     ) -> Result<(), Error> {
-        self.conn.execute(
+        let tx = conn.transaction()?;
+
+        tx.execute(
             "UPDATE txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
             params![spent_tx_id, tx_id, output_index],
         )?;
 
-        self.conn.execute(
+        tx.execute(
             "UPDATE runes_txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
             params![spent_tx_id, tx_id, output_index],
         )?;
@@ -551,8 +556,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn add_txo(&mut self, txo: TXO) -> Result<(), Error> {
-        self.conn.execute(
+    pub fn add_txo(&mut self, conn: &mut Connection, txo: TXO) -> Result<(), Error> {
+        conn.execute(
             "INSERT INTO txos (tx_id, output_index, value, address, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 txo.tx_id,
@@ -574,9 +579,13 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn get_address_balance_by_rune_id(&self, address: &str, rune_id: &str) -> Result<u128, Error> {
-        let mut stmt = self
-        .conn
+    pub fn get_address_balance_by_rune_id(
+        &self,
+        conn: &mut Connection,
+        address: &str,
+        rune_id: &str,
+    ) -> Result<u128, Error> {
+        let mut stmt = conn
         .prepare("SELECT amount FROM runes_txos WHERE address = ?1 AND rune_id = ?2 AND is_unspent = TRUE")?;
 
         let result_iter = stmt.query_map(params![address.to_lowercase(), rune_id], |row| {
@@ -588,8 +597,12 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).sum())
     }
 
-    fn get_address_balance_list(&self, address: &str) -> Result<HashMap<String, u128>, Error> {
-        let mut stmt = self.conn.prepare(
+    pub fn get_address_balance_list(
+        &self,
+        conn: &mut Connection,
+        address: &str,
+    ) -> Result<HashMap<String, u128>, Error> {
+        let mut stmt = conn.prepare(
             "SELECT rune_id, amount FROM runes_txos WHERE address = ?1 AND is_unspent = TRUE",
         )?;
 
@@ -610,14 +623,14 @@ impl<'a> Database for SQLite<'a> {
         Ok(balance_list)
     }
 
-    fn get_runes_txo_by_output_index(
+    pub fn get_runes_txo_by_output_index(
         &self,
+        conn: &mut Connection,
         tx_id: &str,
         output_index: u32,
     ) -> Result<Vec<RuneTXO>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 AND output_index = ?2")?;
+        let mut stmt =
+            conn.prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 AND output_index = ?2")?;
 
         let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
             let amount: String = row.get("amount")?;
@@ -638,10 +651,13 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn get_transaction_runes_txo(&self, tx_id: &str) -> Result<Vec<RuneTXO>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 OR spent_tx_id = ?1")?;
+    pub fn get_transaction_runes_txo(
+        &self,
+        conn: &mut Connection,
+        tx_id: &str,
+    ) -> Result<Vec<RuneTXO>, Error> {
+        let mut stmt =
+            conn.prepare("SELECT * FROM runes_txos WHERE tx_id = ?1 OR spent_tx_id = ?1")?;
 
         let result_iter = stmt.query_map(params![tx_id], |row| {
             let amount: String = row.get("amount")?;
@@ -662,10 +678,12 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn get_address_runes_txo(&self, address: &str) -> Result<Vec<RuneTXO>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM runes_txos WHERE address = ?1")?;
+    pub fn get_address_runes_txo(
+        &self,
+        conn: &mut Connection,
+        address: &str,
+    ) -> Result<Vec<RuneTXO>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM runes_txos WHERE address = ?1")?;
 
         let result_iter = stmt
             .query_map(params![address.to_lowercase()], |row| {
@@ -688,12 +706,13 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn get_address_runes_utxo_by_rune_id(
+    pub fn get_address_runes_utxo_by_rune_id(
         &self,
+        conn: &mut Connection,
         address: &str,
         rune_id: &str,
     ) -> Result<Vec<RuneTXO>, Error> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = conn.prepare(
             "SELECT * FROM runes_txos WHERE address = ?1 AND rune_id = ?2 AND is_unspent = TRUE",
         )?;
 
@@ -718,8 +737,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn get_rune_count(&self) -> Result<u128, Error> {
-        let mut stmt = self.conn.prepare("SELECT COUNT(*) FROM rune_entries")?;
+    pub fn get_rune_count(&self, conn: &mut Connection) -> Result<u128, Error> {
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM rune_entries")?;
         let result_iter = stmt.query_map([], |row| {
             let count: u64 = row.get(0)?;
 
@@ -731,8 +750,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(result)
     }
 
-    fn get_block_height(&self) -> Result<u64, Error> {
-        let mut stmt = self.conn.prepare("SELECT block_height FROM statistics")?;
+    pub fn get_block_height(&self, conn: &mut Connection) -> Result<u64, Error> {
+        let mut stmt = conn.prepare("SELECT block_height FROM statistics")?;
         let result_iter = stmt.query_map([], |row| {
             let block_height: u64 = row.get("block_height")?;
 
@@ -744,10 +763,12 @@ impl<'a> Database for SQLite<'a> {
         Ok(block_height)
     }
 
-    fn get_transaction(&self, tx_id: &str) -> Result<Option<Transaction>, Error> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT * FROM transactions WHERE tx_id = ?1")?;
+    pub fn get_transaction(
+        &self,
+        conn: &mut Connection,
+        tx_id: &str,
+    ) -> Result<Option<Transaction>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM transactions WHERE tx_id = ?1")?;
         let result_iter = stmt
             .query_map(params![tx_id], |row| {
                 Ok(Transaction {
@@ -767,8 +788,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(result)
     }
 
-    fn get_transactions(&self) -> Result<Vec<Transaction>, Error> {
-        let mut stmt = self.conn.prepare("SELECT * FROM transactions")?;
+    pub fn get_transactions(&self, conn: &mut Connection) -> Result<Vec<Transaction>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM transactions")?;
         let result_iter = stmt
             .query_map([], |row| {
                 Ok(Transaction {
@@ -786,8 +807,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn get_runes(&self) -> Result<Vec<RuneEntry>, Error> {
-        let mut stmt = self.conn.prepare("SELECT * FROM rune_entries")?;
+    pub fn get_runes(&self, conn: &mut Connection) -> Result<Vec<RuneEntry>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM rune_entries")?;
 
         let result_iter = stmt.query_map([], |row| {
             let symbol: Option<String> = row.get("symbol")?;
@@ -797,9 +818,7 @@ impl<'a> Database for SQLite<'a> {
             let rune_number: String = row.get("rune_number")?;
             let rune_id: String = row.get("rune_id")?;
 
-            let mut terms_stmt = self
-                .conn
-                .prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
+            let mut terms_stmt = conn.prepare("SELECT * FROM terms WHERE rune_id = ?1")?;
 
             let terms_result_iter = terms_stmt.query_map(params![rune_id], |row| {
                 let amount: Option<String> = row.get("amount")?;
@@ -840,8 +859,12 @@ impl<'a> Database for SQLite<'a> {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    fn set_block_height(&mut self, new_block_height: u64) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("SELECT block_height FROM statistics")?;
+    pub fn set_block_height(
+        &mut self,
+        conn: &mut Connection,
+        new_block_height: u64,
+    ) -> Result<(), Error> {
+        let mut stmt = conn.prepare("SELECT block_height FROM statistics")?;
         let result_iter = stmt.query_map([], |row| {
             let block_height: u64 = row.get("block_height")?;
 
@@ -851,12 +874,12 @@ impl<'a> Database for SQLite<'a> {
         let block_height = result_iter.map(|r| r.unwrap()).next();
 
         if let Some(_) = block_height {
-            self.conn.execute(
+            conn.execute(
                 "UPDATE statistics SET block_height = ?1 WHERE TRUE",
                 params![new_block_height],
             )?;
         } else {
-            self.conn.execute(
+            conn.execute(
                 "INSERT INTO statistics (block_height) VALUES (?1)",
                 params![new_block_height],
             )?;
@@ -865,8 +888,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(())
     }
 
-    fn get_db_indexes(&self) -> Result<Vec<SQLiteIndex>, Error> {
-        let mut stmt = self.conn.prepare(
+    pub fn get_db_indexes(&self, conn: &mut Connection) -> Result<Vec<SQLiteIndex>, Error> {
+        let mut stmt = conn.prepare(
             "SELECT
                 type, 
                 name, 
@@ -889,8 +912,8 @@ impl<'a> Database for SQLite<'a> {
         Ok(indexes)
     }
 
-    fn create_db_indexes(&self) -> Result<(), Error> {
-        self.conn.execute(
+    pub fn create_db_indexes(&self, conn: &mut Connection) -> Result<(), Error> {
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_rune_entries_rune_id
                 ON rune_entries(rune_id);
@@ -898,7 +921,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_rune_entries_etching_tx_id
                 ON rune_entries(etching_tx_id);
@@ -906,7 +929,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_rune_entries_raw_name
                 ON rune_entries(raw_name);
@@ -914,7 +937,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_terms_rune_id
                 ON terms(rune_id);
@@ -922,7 +945,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_txos_tx_id_output_index
                 ON txos(tx_id, output_index);
@@ -930,7 +953,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_runes_txos_tx_id_output_index
                 ON runes_txos(tx_id, output_index);
@@ -938,7 +961,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_runes_txos_address_rune_id_is_unspent
                 ON runes_txos(address, rune_id, is_unspent);
@@ -946,7 +969,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_runes_txos_address_is_unspent
                 ON runes_txos(address, is_unspent);
@@ -954,7 +977,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_runes_txos_tx_id
                 ON runes_txos(tx_id);
@@ -962,7 +985,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_runes_txos_spent_tx_id
                 ON runes_txos(spent_tx_id);
@@ -970,7 +993,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_runes_txos_address
                 ON runes_txos(address);
@@ -978,7 +1001,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
                 CREATE INDEX IF NOT EXISTS idx_transactions_tx_id
                 ON transactions(tx_id);
@@ -986,7 +1009,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
             CREATE INDEX IF NOT EXISTS idx_rune_events_tx_id
             ON rune_events(tx_id);
@@ -994,7 +1017,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
             CREATE INDEX IF NOT EXISTS idx_rune_events_address
             ON rune_events(address);
@@ -1002,7 +1025,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
             CREATE INDEX IF NOT EXISTS idx_rune_events_block_height
             ON rune_events(block_height);
@@ -1010,7 +1033,7 @@ impl<'a> Database for SQLite<'a> {
             (),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "
             CREATE INDEX IF NOT EXISTS idx_rune_events_rune_id
             ON rune_events(rune_id);

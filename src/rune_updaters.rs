@@ -1,3 +1,5 @@
+use rusqlite::Connection;
+
 use super::adapters::db::{RuneEntry, RuneTXO, Terms, Transaction as DbTransaction, TXO};
 use crate::adapters::db::Database;
 // use super::adapters::mock_db::MockDb as Db;
@@ -8,7 +10,8 @@ use super::runes::*;
 use super::utils;
 
 pub struct RuneUpdater<'a> {
-    pub database: Db<'a>,
+    pub database: Db,
+    pub conn: &'a mut Connection,
     pub chain: Network,
     pub burned: HashMap<RuneId, Lot>,
     pub block_height: u32,
@@ -196,6 +199,7 @@ impl<'a> RuneUpdater<'a> {
         for (id, amount) in burned {
             *self.burned.entry(id).or_default() += amount;
             self.database.add_rune_burn_event(
+                self.conn,
                 &id.to_string(),
                 tx_id,
                 amount.n(),
@@ -210,14 +214,14 @@ impl<'a> RuneUpdater<'a> {
     pub fn update(mut self) -> Result {
         for (rune_id, burned) in self.burned {
             self.database
-                .increase_rune_entry_burned(&rune_id.to_string(), burned.n())?;
+                .increase_rune_entry_burned(self.conn, &rune_id.to_string(), burned.n())?;
         }
 
         Ok(())
     }
 
     fn add_transaction(&mut self, tx_id: &str, artifact: &Artifact) -> Result {
-        self.database.add_transaction(DbTransaction {
+        self.database.add_transaction(self.conn, DbTransaction {
             tx_id: tx_id.to_string(),
             block_height: self.block_height.into(),
             is_artifact: true,
@@ -246,7 +250,7 @@ impl<'a> RuneUpdater<'a> {
 
     fn add_txo(&mut self, tx: &Transaction, tx_id: &str) -> Result<(), Error> {
         for (vout, _) in tx.output.iter().enumerate() {
-            self.database.add_txo(TXO {
+            self.database.add_txo(self.conn, TXO {
                 tx_id: tx_id.to_string(),
                 output_index: vout as u32,
                 block_height: self.block_height.into(),
@@ -269,7 +273,7 @@ impl<'a> RuneUpdater<'a> {
         balances: Vec<(RuneId, Lot)>,
     ) -> Result {
         for (id, balance) in balances {
-            self.database.add_rune_txo(RuneTXO {
+            self.database.add_rune_txo(self.conn, RuneTXO {
                 tx_id: tx_id.to_string(),
                 output_index: vout as u32,
                 block_height: self.block_height.into(),
@@ -293,7 +297,7 @@ impl<'a> RuneUpdater<'a> {
         id: RuneId,
         rune: Rune,
     ) -> Result {
-        let rune_count = self.database.get_rune_count()? + 1;
+        let rune_count = self.database.get_rune_count(self.conn)? + 1;
 
         let rune_entry = match artifact {
             Artifact::Cenotaph(cenotaph) => RuneEntry {
@@ -363,7 +367,7 @@ impl<'a> RuneUpdater<'a> {
             }
         };
 
-        self.database.add_rune_entry(rune_entry)
+        self.database.add_rune_entry(self.conn, rune_entry)
     }
 
     async fn etched(
@@ -390,7 +394,7 @@ impl<'a> RuneUpdater<'a> {
                 || rune.is_reserved()
                 || self
                     .database
-                    .get_rune_by_raw_name(&rune.to_string())?
+                    .get_rune_by_raw_name(self.conn, &rune.to_string())?
                     .is_some()
                 || !self.tx_commits_to_rune(tx, rune).await?
             {
@@ -420,7 +424,7 @@ impl<'a> RuneUpdater<'a> {
     }
 
     fn mint(&mut self, id: RuneId, tx_id: &str) -> Result<Option<Lot>> {
-        let Some(rune_entry) = self.database.get_rune_by_id(&id.to_string())? else {
+        let Some(rune_entry) = self.database.get_rune_by_id(self.conn, &id.to_string())? else {
             return Ok(None);
         };
 
@@ -429,7 +433,7 @@ impl<'a> RuneUpdater<'a> {
         };
 
         self.database
-            .update_rune_entry_mint_count(&id.to_string(), tx_id, amount, self.block_height.into(), self.block_time)?;
+            .update_rune_entry_mint_count(self.conn, &id.to_string(), tx_id, amount, self.block_height.into(), self.block_time)?;
 
         Ok(Some(Lot(amount)))
     }
@@ -441,6 +445,7 @@ impl<'a> RuneUpdater<'a> {
         // increment unallocated runes with the runes in tx inputs
         for input in &tx.input {
             let runes_txos = self.database.get_runes_txo_by_output_index(
+                self.conn,
                 &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
             )?;
@@ -458,6 +463,7 @@ impl<'a> RuneUpdater<'a> {
     fn mark_txs_as_spent(&mut self, tx: &Transaction, tx_id: &str) -> Result<()> {
         for input in &tx.input {
             self.database.mark_utxo_as_spent(
+                self.conn,
                 &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
                 tx_id,

@@ -43,10 +43,10 @@ async fn main() -> Result<(), Error> {
         .build(manager)
         .expect("Error building a connection pool");
 
-    let indexer = Indexer {
+    let mut indexer = Indexer {
             chain: Network::Testnet,
             rpc_url: "https://powerful-cool-bush.btc-testnet.quiknode.pro/cf40fbe86ac4d435ce4799c8aae18c1dc65b96c8".to_string(),
-            conn: &pool.clone().get().unwrap(),
+            conn: &mut pool.clone().get().unwrap(),
     };
 
     indexer.index_blocks().await?;

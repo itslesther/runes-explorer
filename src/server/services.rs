@@ -10,12 +10,12 @@ use actix_web::{get, web, HttpResponse, Responder};
 )]
 #[get("/runes")]
 async fn get_runes(state: web::Data<AppState>) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite { };
 
     let response = RuneEntryListResponse {
-        data: database.get_runes().unwrap(),
+        data: database.get_runes(conn).unwrap(),
     };
 
     HttpResponse::Ok().json(response)
@@ -30,14 +30,14 @@ async fn get_rune_by_id(
     state: web::Data<AppState>,
     path_params: web::Path<RuneEntryDetailsParams>,
 ) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite { };
 
     let rune_id = &path_params.rune_id;
 
     let response = RuneEntryDetailsResponse {
-        data: database.get_rune_by_id(rune_id).unwrap(),
+        data: database.get_rune_by_id(conn, rune_id).unwrap(),
     };
 
     HttpResponse::Ok().json(response)
@@ -52,16 +52,16 @@ async fn get_address_balance_by_rune_id(
     state: web::Data<AppState>,
     path_params: web::Path<AddressBalanceParams>,
 ) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite { };
 
     let address = &path_params.address.to_lowercase();
     let rune_id = &path_params.rune_id;
 
     let response = AddressBalanceResponse {
         data: database
-            .get_address_balance_by_rune_id(address, rune_id)
+            .get_address_balance_by_rune_id(conn, address, rune_id)
             .unwrap(),
     };
 
@@ -77,14 +77,14 @@ async fn get_address_balance_list(
     state: web::Data<AppState>,
     path_params: web::Path<AddressBalanceListParams>,
 ) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite {  };
 
     let address = &path_params.address.to_lowercase();
 
     let response = AddressBalanceListResponse {
-        data: database.get_address_balance_list(address).unwrap(),
+        data: database.get_address_balance_list(conn, address).unwrap(),
     };
 
     HttpResponse::Ok().json(response)
@@ -99,16 +99,16 @@ async fn get_runes_txo_by_output_index(
     state: web::Data<AppState>,
     path_params: web::Path<RunesTXOByOutputIndexParams>,
 ) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite {  };
 
     let tx_id = &path_params.tx_id.to_lowercase();
     let index = path_params.index;
 
     let response = RunesTXOByOutputIndexResponse {
         data: database
-            .get_runes_txo_by_output_index(tx_id, index)
+            .get_runes_txo_by_output_index(conn, tx_id, index)
             .unwrap(),
     };
 
@@ -124,16 +124,16 @@ async fn get_address_runes_utxo_by_rune_id(
     state: web::Data<AppState>,
     path_params: web::Path<AddressRunesUTXOByRuneIdParams>,
 ) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite { };
 
     let address = &path_params.address.to_lowercase();
     let rune_id = &path_params.rune_id;
 
     let response = AddressRunesUTXOByRuneIdResponse {
         data: database
-            .get_address_runes_utxo_by_rune_id(address, rune_id)
+            .get_address_runes_utxo_by_rune_id(conn,address, rune_id)
             .unwrap(),
     };
 
@@ -145,12 +145,12 @@ async fn get_address_runes_utxo_by_rune_id(
 )]
 #[get("/transactions")]
 async fn get_transaction_list(state: web::Data<AppState>) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite {  };
 
     let response = TransactionListResponse {
-        data: database.get_transactions().unwrap(),
+        data: database.get_transactions(conn).unwrap(),
     };
 
     HttpResponse::Ok().json(response)
@@ -165,19 +165,19 @@ async fn get_transaction_with_runes_txo(
     state: web::Data<AppState>,
     path_params: web::Path<TransactionWithRunesParams>,
 ) -> impl Responder {
-    let conn = &state.pool.get().unwrap();
+    let conn = &mut state.pool.get().unwrap();
 
-    let database = SQLite { conn };
+    let database = SQLite {  };
 
     let tx_id = &path_params.tx_id.to_lowercase();
 
-    let Some(transaction) = database.get_transaction(tx_id).unwrap() else {
+    let Some(transaction) = database.get_transaction(conn, tx_id).unwrap() else {
         return HttpResponse::NotFound().finish();
     };
 
-    let runes_txo = database.get_transaction_runes_txo(tx_id).unwrap();
+    let runes_txo = database.get_transaction_runes_txo(conn, tx_id).unwrap();
 
-    let rune_entry = database.get_rune_by_etched_tx_id(tx_id).unwrap();
+    let rune_entry = database.get_rune_by_etched_tx_id(conn, tx_id).unwrap();
 
     let response = TransactionWithRunesResponse {
         data: TransactionWithRunesTXO {

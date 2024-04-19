@@ -12,16 +12,16 @@ pub struct Indexer<'a> {
     pub chain: Network,
     pub rpc_url: String,
     // pub pool: Pool<SqliteConnectionManager>,
-    pub conn: &'a Connection,
+    pub conn: &'a mut Connection,
     // database: SQLite<'a>,
 }
 
 impl<'a> Indexer<'a> {
-    pub async fn index_blocks(&self) -> Result<(), Error> {
+    pub async fn index_blocks(&mut self) -> Result<(), Error> {
         log("Indexing blocks")?;
         // let conn = &pool.get().unwrap();
-        let mut database = SQLite { conn: self.conn };
-        database.init_tables()?;
+        let mut database = SQLite { };
+        database.init_tables(self.conn)?;
 
         let btc_rpc = &BTCRPC {
             url: self.rpc_url.clone(),
@@ -33,7 +33,7 @@ impl<'a> Indexer<'a> {
         let end_block_height: u32 = btc_rpc.get_block_count().await?;
         log(&format!("Current block height: {}", end_block_height))?;
 
-        let mut start_block_height: u32 = u32::try_from(database.get_block_height()?)?;
+        let mut start_block_height: u32 = u32::try_from(database.get_block_height(self.conn)?)?;
 
         if start_block_height == 0 {
             log(&format!(
@@ -41,7 +41,7 @@ impl<'a> Indexer<'a> {
                 halving_block_height
             ))?;
 
-            database.set_block_height(halving_block_height.into())?;
+            database.set_block_height(self.conn, halving_block_height.into())?;
             start_block_height = halving_block_height;
         } else {
             log(&format!("Resuming from block: {}", start_block_height))?;
@@ -88,6 +88,7 @@ impl<'a> Indexer<'a> {
 
             let mut rune_updater = RuneUpdater {
                 database,
+                conn: self.conn,
                 chain: self.chain,
                 burned: HashMap::new(),
                 block_height,
@@ -113,7 +114,7 @@ impl<'a> Indexer<'a> {
             }
 
             rune_updater.update()?;
-            database.set_block_height(block_height.into())?;
+            database.set_block_height(self.conn, block_height.into())?;
         }
 
         log("Indexing completed")?;
