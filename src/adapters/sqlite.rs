@@ -94,19 +94,19 @@ impl SQLite {
             (),
         )?;
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS txos (
-            tx_id TEXT NOT NULL,
-            output_index INTEGER NOT NULL,
-            block_height INTEGER NOT NULL,
-            value TEXT NOT NULL,
-            address TEXT,
-            is_unspent BOOLEAN,
-            spent_tx_id TEXT,
-            timestamp INTEGER
-      )",
-            (),
-        )?;
+    //     conn.execute(
+    //         "CREATE TABLE IF NOT EXISTS txos (
+    //         tx_id TEXT NOT NULL,
+    //         output_index INTEGER NOT NULL,
+    //         block_height INTEGER NOT NULL,
+    //         value TEXT NOT NULL,
+    //         address TEXT,
+    //         is_unspent BOOLEAN,
+    //         spent_tx_id TEXT,
+    //         timestamp INTEGER
+    //   )",
+    //         (),
+    //     )?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS statistics (
@@ -278,10 +278,10 @@ impl SQLite {
 
         tx.commit()?;
 
-        log(&format!(
-            "Mint count for rune id {} updated to: {}",
-            rune_id, new_mint_count
-        ))?;
+        // log(&format!(
+        //     "Mint count for rune id {} updated to: {}",
+        //     rune_id, new_mint_count
+        // ))?;
 
         Ok(())
     }
@@ -308,10 +308,10 @@ impl SQLite {
             params![new_burned, rune_id],
         )?;
 
-        log(&format!(
-            "Burned amount for rune id {} updated to: {}",
-            new_burned, rune_id
-        ))?;
+        // log(&format!(
+        //     "Burned amount for rune id {} updated to: {}",
+        //     new_burned, rune_id
+        // ))?;
 
         Ok(())
     }
@@ -330,11 +330,10 @@ impl SQLite {
             params![tx_id, rune_id, block_height, timestamp, amount.to_string(), "burn"],
         )?;
 
-        // println!("Burn event for rune {} added: {:?}", rune_id, tx_id);
-        log(&format!(
-            "Burn event for rune {} added: {:?}",
-            rune_id, tx_id
-        ))?;
+        // log(&format!(
+        //     "Burn event for rune {} added: {:?}",
+        //     rune_id, tx_id
+        // ))?;
 
         Ok(())
     }
@@ -414,7 +413,7 @@ impl SQLite {
             ],
         )?;
 
-        log(&format!("Transaction added: {:?}", transaction.tx_id))?;
+        // log(&format!("Transaction added: {:?}", transaction.tx_id))?;
 
         Ok(())
     }
@@ -469,7 +468,7 @@ impl SQLite {
 
         tx.commit()?;
 
-        log(&format!("Rune entry added: {:?}", rune_entry.rune_id))?;
+        log(&format!("Rune entry added: {:?}", rune_entry.name))?;
 
         Ok(())
     }
@@ -496,41 +495,41 @@ impl SQLite {
 
         tx.commit()?;
 
-        log(&format!(
-            "Rune transfer for rune {} added: {:?}",
-            rune_txo.rune_id, rune_txo.tx_id
-        ))?;
+        // log(&format!(
+        //     "Rune transfer for rune {} added: {:?}",
+        //     rune_txo.rune_id, rune_txo.tx_id
+        // ))?;
 
         Ok(())
     }
 
-    pub fn get_txo(
-        &mut self,
-        conn: &mut Connection,
-        tx_id: &str,
-        output_index: u32,
-    ) -> Result<Option<TXO>, Error> {
-        let mut stmt = conn.prepare("SELECT * FROM txos WHERE tx_id = ?1 AND output_index = ?2")?;
+    // pub fn get_txo(
+    //     &mut self,
+    //     conn: &mut Connection,
+    //     tx_id: &str,
+    //     output_index: u32,
+    // ) -> Result<Option<TXO>, Error> {
+    //     let mut stmt = conn.prepare("SELECT * FROM txos WHERE tx_id = ?1 AND output_index = ?2")?;
 
-        let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
-            let value: String = row.get("value")?;
+    //     let result_iter = stmt.query_map(params![tx_id, output_index], |row| {
+    //         let value: String = row.get("value")?;
 
-            Ok(TXO {
-                tx_id: row.get("tx_id")?,
-                output_index: row.get("output_index")?,
-                value: value.parse().unwrap(),
-                address: row.get("address")?,
-                is_unspent: row.get("is_unspent")?,
-                spent_tx_id: row.get("spent_tx_id")?,
-                timestamp: row.get("timestamp")?,
-                block_height: row.get("block_height")?,
-            })
-        })?;
+    //         Ok(TXO {
+    //             tx_id: row.get("tx_id")?,
+    //             output_index: row.get("output_index")?,
+    //             value: value.parse().unwrap(),
+    //             address: row.get("address")?,
+    //             is_unspent: row.get("is_unspent")?,
+    //             spent_tx_id: row.get("spent_tx_id")?,
+    //             timestamp: row.get("timestamp")?,
+    //             block_height: row.get("block_height")?,
+    //         })
+    //     })?;
 
-        let txo = result_iter.map(|r| r.unwrap()).next();
+    //     let txo = result_iter.map(|r| r.unwrap()).next();
 
-        Ok(txo)
-    }
+    //     Ok(txo)
+    // }
 
     pub fn mark_utxo_as_spent(
         &mut self,
@@ -539,45 +538,47 @@ impl SQLite {
         output_index: u32,
         spent_tx_id: &str,
     ) -> Result<(), Error> {
-        let tx = conn.transaction()?;
+        // let tx = conn.transaction()?;
 
-        tx.execute(
-            "UPDATE txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
-            params![spent_tx_id, tx_id, output_index],
-        )?;
+        // tx.execute(
+        //     "UPDATE txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
+        //     params![spent_tx_id, tx_id, output_index],
+        // )?;
 
-        tx.execute(
+        conn.execute(
             "UPDATE runes_txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
             params![spent_tx_id, tx_id, output_index],
         )?;
+
+        // tx.commit()?;
 
         // log(&format!("UTXO marked as spent: {}:{} -> {}", tx_id, output_index, spent_tx_id))?;
 
         Ok(())
     }
 
-    pub fn add_txo(&mut self, conn: &mut Connection, txo: TXO) -> Result<(), Error> {
-        conn.execute(
-            "INSERT INTO txos (tx_id, output_index, value, address, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                txo.tx_id,
-                txo.output_index,
-                txo.value.to_string(),
-                txo.address,
-                txo.is_unspent,
-                txo.spent_tx_id,
-                txo.timestamp,
-                txo.block_height
-            ],
-        )?;
+    // pub fn add_txo(&mut self, conn: &mut Connection, txo: TXO) -> Result<(), Error> {
+    //     conn.execute(
+    //         "INSERT INTO txos (tx_id, output_index, value, address, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    //         params![
+    //             txo.tx_id,
+    //             txo.output_index,
+    //             txo.value.to_string(),
+    //             txo.address,
+    //             txo.is_unspent,
+    //             txo.spent_tx_id,
+    //             txo.timestamp,
+    //             txo.block_height
+    //         ],
+    //     )?;
 
-        log(&format!(
-            "TXO added: {}:{} -> {}",
-            txo.tx_id, txo.output_index, txo.value
-        ))?;
+    //     // log(&format!(
+    //     //     "TXO added: {}:{} -> {}",
+    //     //     txo.tx_id, txo.output_index, txo.value
+    //     // ))?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub fn get_address_balance_by_rune_id(
         &self,
@@ -945,13 +946,13 @@ impl SQLite {
             (),
         )?;
 
-        conn.execute(
-            "
-                CREATE INDEX IF NOT EXISTS idx_txos_tx_id_output_index
-                ON txos(tx_id, output_index);
-        ",
-            (),
-        )?;
+        // conn.execute(
+        //     "
+        //         CREATE INDEX IF NOT EXISTS idx_txos_tx_id_output_index
+        //         ON txos(tx_id, output_index);
+        // ",
+        //     (),
+        // )?;
 
         conn.execute(
             "
@@ -1035,8 +1036,48 @@ impl SQLite {
 
         conn.execute(
             "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_event_type
+            ON rune_events(event_type);
+        ",
+            (),
+        )?;
+
+        conn.execute(
+            "
             CREATE INDEX IF NOT EXISTS idx_rune_events_rune_id
             ON rune_events(rune_id);
+        ",
+            (),
+        )?;
+
+        conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_address_rune_id
+            ON rune_events(address, rune_id);
+        ",
+            (),
+        )?;
+
+        conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_address_event_type
+            ON rune_events(address, event_type);
+        ",
+            (),
+        )?;
+
+        conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_address_rune_id_event_type
+            ON rune_events(address, rune_id, event_type);
+        ",
+            (),
+        )?;
+
+        conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_rune_events_rune_id_event_type
+            ON rune_events(rune_id, event_type);
         ",
             (),
         )?;

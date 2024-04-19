@@ -36,7 +36,7 @@ impl<'a> RuneUpdater<'a> {
 
         if let Some(artifact) = &artifact {
             self.add_transaction(tx_id, &artifact)?;
-            self.add_txo(tx, tx_id)?;
+            // self.add_txo(tx, tx_id)?;
 
             if let Some(id) = artifact.mint() {
                 if let Some(amount) = self.mint(id, tx_id)? {
@@ -248,22 +248,22 @@ impl<'a> RuneUpdater<'a> {
         Ok(())
     }
 
-    fn add_txo(&mut self, tx: &Transaction, tx_id: &str) -> Result<(), Error> {
-        for (vout, _) in tx.output.iter().enumerate() {
-            self.database.add_txo(self.conn, TXO {
-                tx_id: tx_id.to_string(),
-                output_index: vout as u32,
-                block_height: self.block_height.into(),
-                value: tx.output[vout].value as u128,
-                address: utils::output_to_address(&tx.output[vout], self.chain)
-                    .map(|s| s.to_lowercase()),
-                is_unspent: true,
-                spent_tx_id: None,
-                timestamp: self.block_time,
-            })?;
-        }
-        Ok(())
-    }
+    // fn add_txo(&mut self, tx: &Transaction, tx_id: &str) -> Result<(), Error> {
+    //     for (vout, _) in tx.output.iter().enumerate() {
+    //         self.database.add_txo(self.conn, TXO {
+    //             tx_id: tx_id.to_string(),
+    //             output_index: vout as u32,
+    //             block_height: self.block_height.into(),
+    //             value: tx.output[vout].value as u128,
+    //             address: utils::output_to_address(&tx.output[vout], self.chain)
+    //                 .map(|s| s.to_lowercase()),
+    //             is_unspent: true,
+    //             spent_tx_id: None,
+    //             timestamp: self.block_time,
+    //         })?;
+    //     }
+    //     Ok(())
+    // }
 
     fn add_rune_txo(
         &mut self,

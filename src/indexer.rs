@@ -97,12 +97,12 @@ impl<'a> Indexer<'a> {
             };
 
             for (tx_index, tx) in block.txdata.iter().enumerate() {
-                let tx_percentage = ((tx_index + 1) as f32 / total_tx_count as f32) * 100.0;
-                log(&format!(
-                    "{}% transactions indexed on block: {}",
-                    format!("{:.1$}", tx_percentage, 2),
-                    block_height
-                ))?;
+                // let tx_percentage = ((tx_index + 1) as f32 / total_tx_count as f32) * 100.0;
+                // log(&format!(
+                //     "{}% transactions indexed on block: {}",
+                //     format!("{:.1$}", tx_percentage, 2),
+                //     block_height
+                // ))?;
 
                 rune_updater
                     .index_runes(
