@@ -1,7 +1,6 @@
 use rusqlite::Connection;
 
 use super::adapters::db::{RuneEntry, RuneTXO, Terms, Transaction as DbTransaction, TXO};
-use crate::adapters::db::Database;
 // use super::adapters::mock_db::MockDb as Db;
 use super::adapters::sqlite::SQLite as Db;
 use super::btc_rpc::BTCRPC;
@@ -284,6 +283,7 @@ impl<'a> RuneUpdater<'a> {
                 is_unspent: true,
                 spent_tx_id: None,
                 timestamp: self.block_time,
+                spent_block_height: None,
             })?;
         }
 
@@ -354,6 +354,7 @@ impl<'a> RuneUpdater<'a> {
                             height_end: terms.height.1,
                             offset_start: terms.offset.0,
                             offset_end: terms.offset.1,
+                            block_height: id.block,
                         })
                     },
                     burned: 0,
@@ -467,6 +468,7 @@ impl<'a> RuneUpdater<'a> {
                 &input.previous_output.txid.to_string().to_lowercase(),
                 input.previous_output.vout,
                 tx_id,
+                self.block_height.into(),
             )?;
         }
 
@@ -520,7 +522,7 @@ impl<'a> RuneUpdater<'a> {
 
                 let commit_tx_height = self
                     .btc_rpc
-                    .get_block_header(&tx_info.raw.blockhash.unwrap())
+                    .get_block_header_by_hash(&tx_info.raw.blockhash.unwrap())
                     .await
                     .unwrap()
                     .height;

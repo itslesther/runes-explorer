@@ -16,6 +16,7 @@ pub struct RawBlockHeader {
     pub time: u64,
     #[serde(rename = "nTx")]
     pub n_tx: u32,
+    pub previousblockhash: String,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RawTxObj {
@@ -165,23 +166,24 @@ impl BTCRPC {
         Ok(result)
     }
 
-    pub async fn get_latest_validated_block_height(&self) -> Result<u32, Error> {
-        let block_hash = self.get_best_block_hash().await?;
+    pub async fn get_block_header_by_height(&self, block_height: u32) -> Result<RawBlockHeader, Error> {
+        let block_hash = self.get_block_hash_by_height(block_height).await?;
 
-        let block_header = self.get_block_header(&block_hash).await?;
+        let block_header = self.get_block_header_by_hash(&block_hash).await?;
 
-        Ok(block_header.height)
+        Ok(block_header)
     }
 
-    pub async fn get_latest_validated_block(&self) -> Result<Block, Error> {
-        let block_hash = self.get_best_block_hash().await?;
+
+    pub async fn get_block_by_height(&self, block_height: u32) -> Result<Block, Error> {
+        let block_hash = self.get_block_hash_by_height(block_height).await?;
 
         let block = self.get_block_by_hash(&block_hash).await?;
 
         Ok(block)
     }
 
-    pub async fn get_block_by_height(&self, block_height: u32) -> Result<Block, Error> {
+    pub async fn get_block_hash_by_height(&self, block_height: u32) -> Result<String, Error> {
         let response = self
             .rpc_request(&RPCRequest::new(
                 "getblockhash",
@@ -189,11 +191,8 @@ impl BTCRPC {
             ))
             .await?;
 
-        let block_hash = response.json::<RPCResponse<String>>().await?.result;
-
-        let block = self.get_block_by_hash(&block_hash).await?;
-
-        Ok(block)
+        let block_hash = response.json::<RPCResponse<String>>().await?.result.to_lowercase();
+        Ok(block_hash)
     }
 
     pub async fn get_block_by_hash(&self, block_hash: &str) -> Result<Block, Error> {
@@ -213,70 +212,17 @@ impl BTCRPC {
         Ok(data)
     }
 
-    // pub async fn get_block_by_hash(block_hash: &str) -> Result<RawBlockObj<TransactionInfo>, Error> {
-    //     let response = rpc_request(&RPCRequest::new(
-    //         "getblock",
-    //         &[RPCValue::Str(block_hash.to_string()), RPCValue::Int(2)],
-    //     ))
-    //     .await?;
+    // pub async fn get_best_block_hash(&self) -> Result<String, Error> {
+    //     let response = self
+    //         .rpc_request(&RPCRequest::new("getbestblockhash", &[]))
+    //         .await?;
 
-    //     let result = response
-    //         .json::<RPCResponse<RawBlockObj<RawTxObj>>>()
-    //         .await?
-    //         .result;
+    //     let result = response.json::<RPCResponse<String>>().await?.result;
 
-    //     let block: RawBlockObj<TransactionInfo> = RawBlockObj {
-    //         hash: result.hash,
-    //         confirmations: result.confirmations,
-    //         height: result.height,
-    //         version: result.version,
-    //         version_hex: result.version_hex,
-    //         merkleroot: result.merkleroot,
-    //         time: result.time,
-    //         mediantime: result.mediantime,
-    //         nonce: result.nonce,
-    //         bits: result.bits,
-    //         difficulty: result.difficulty,
-    //         chainwork: result.chainwork,
-    //         n_tx: result.n_tx,
-    //         previousblockhash: result.previousblockhash,
-    //         strippedsize: result.strippedsize,
-    //         size: result.size,
-    //         weight: result.weight,
-    //         tx: result
-    //             .tx
-    //             .iter()
-    //             .map(|raw_temp| {
-    //                 let hex = hex::decode(&raw_temp.hex).unwrap();
-
-    //                 let mut raw = raw_temp.clone();
-    //                 raw.confirmations = Some(result.confirmations);
-    //                 raw.time = Some(result.time);
-    //                 raw.blocktime = Some(result.time);
-
-    //                 let data: Transaction = deserialize(&hex).unwrap();
-
-    //                 let transaction_info = TransactionInfo { raw, data };
-    //                 // data.confirmations = Some(result.confirmations);
-    //                 transaction_info
-    //             })
-    //             .collect(),
-    //     };
-
-    //     Ok(block)
+    //     Ok(result)
     // }
 
-    pub async fn get_best_block_hash(&self) -> Result<String, Error> {
-        let response = self
-            .rpc_request(&RPCRequest::new("getbestblockhash", &[]))
-            .await?;
-
-        let result = response.json::<RPCResponse<String>>().await?.result;
-
-        Ok(result)
-    }
-
-    pub async fn get_block_header(&self, block_hash: &str) -> Result<RawBlockHeader, Error> {
+    pub async fn get_block_header_by_hash(&self, block_hash: &str) -> Result<RawBlockHeader, Error> {
         let response = self
             .rpc_request(&RPCRequest::new(
                 "getblockheader",

@@ -1,4 +1,4 @@
 target
 .DS_Store
 indexer.log
-runes.db*
+indexer.db*

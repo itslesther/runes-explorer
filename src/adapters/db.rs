@@ -10,8 +10,10 @@ pub struct SQLiteIndex {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Statistics {
-    pub block_height: u64,
+pub struct Block {
+    pub height: u64,
+    pub hash: String,
+    pub timestamp: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -52,6 +54,7 @@ pub struct Terms {
     pub height_end: Option<u64>,
     pub offset_start: Option<u64>,
     pub offset_end: Option<u64>,
+    pub block_height: u64,
 }
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct TXO {
@@ -76,6 +79,7 @@ pub struct RuneTXO {
     pub is_unspent: bool,
     pub spent_tx_id: Option<String>,
     pub timestamp: u32,
+    pub spent_block_height: Option<u64>,
 }
 
 pub trait Database {

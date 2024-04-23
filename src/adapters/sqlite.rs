@@ -46,7 +46,8 @@ impl SQLite {
             height_start INTEGER,
             height_end INTEGER,
             offset_start INTEGER,
-            offset_end INTEGER
+            offset_end INTEGER,
+            block_height INTEGER NOT NUL
         )",
             (),
         )?;
@@ -87,30 +88,34 @@ impl SQLite {
             rune_id TEXT NOT NULL,
             amount TEXT NOT NULL,
             address TEXT,
-            is_unspent BOOLEAN,
+            is_unspent BOOLEAN NOT NULL,
             spent_tx_id TEXT,
+            spent_block_height INTEGER,
             timestamp INTEGER
       )",
             (),
         )?;
 
-    //     conn.execute(
-    //         "CREATE TABLE IF NOT EXISTS txos (
-    //         tx_id TEXT NOT NULL,
-    //         output_index INTEGER NOT NULL,
-    //         block_height INTEGER NOT NULL,
-    //         value TEXT NOT NULL,
-    //         address TEXT,
-    //         is_unspent BOOLEAN,
-    //         spent_tx_id TEXT,
-    //         timestamp INTEGER
-    //   )",
-    //         (),
-    //     )?;
+        //     conn.execute(
+        //         "CREATE TABLE IF NOT EXISTS txos (
+        //         tx_id TEXT NOT NULL,
+        //         output_index INTEGER NOT NULL,
+        //         block_height INTEGER NOT NULL,
+        //         value TEXT NOT NULL,
+        //         address TEXT,
+        //         is_unspent BOOLEAN NOT NULL,
+        //         spent_tx_id TEXT,
+        //             spent_block_height INTEGER,
+        //         timestamp INTEGER
+        //   )",
+        //         (),
+        //     )?;
 
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS statistics (
-            block_height INTEGER NOT NULL
+            "CREATE TABLE IF NOT EXISTS blocks (
+            height INTEGER NOT NULL,
+            hash TEXT NOT NULL,
+            timestamp INTEGER NOT NULL
             )",
             (),
         )?;
@@ -151,6 +156,7 @@ impl SQLite {
                     height_end: row.get("height_end")?,
                     offset_start: row.get("offset_start")?,
                     offset_end: row.get("offset_end")?,
+                    block_height: row.get("block_height")?,
                 })
             })?;
 
@@ -209,6 +215,7 @@ impl SQLite {
                     height_end: row.get("height_end")?,
                     offset_start: row.get("offset_start")?,
                     offset_end: row.get("offset_end")?,
+                    block_height: row.get("block_height")?,
                 })
             })?;
 
@@ -366,6 +373,7 @@ impl SQLite {
                     height_end: row.get("height_end")?,
                     offset_start: row.get("offset_start")?,
                     offset_end: row.get("offset_end")?,
+                    block_height: row.get("block_height")?,
                 })
             })?;
 
@@ -448,7 +456,7 @@ impl SQLite {
 
         if let Some(terms) = rune_entry.terms {
             tx.execute(
-                "INSERT INTO terms (rune_id, amount, cap, height_start, height_end, offset_start, offset_end) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO terms (rune_id, amount, cap, height_start, height_end, offset_start, offset_end, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     rune_entry.rune_id,
                     terms.amount.map(|a| a.to_string()),
@@ -456,7 +464,8 @@ impl SQLite {
                     terms.height_start,
                     terms.height_end,
                     terms.offset_start,
-                    terms.offset_end
+                    terms.offset_end,
+                    terms.block_height
                 ],
             )?;
         }
@@ -475,7 +484,7 @@ impl SQLite {
 
     pub fn add_rune_txo(&mut self, conn: &mut Connection, rune_txo: RuneTXO) -> Result<(), Error> {
         let tx = conn.transaction()?;
-        tx.execute("INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, is_unspent, spent_tx_id, timestamp, block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        tx.execute("INSERT INTO runes_txos (tx_id, output_index, rune_id, amount, address, is_unspent, spent_tx_id, timestamp, block_height, spent_block_height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             rune_txo.tx_id,
             rune_txo.output_index,
@@ -485,7 +494,8 @@ impl SQLite {
             rune_txo.is_unspent,
             rune_txo.spent_tx_id,
             rune_txo.timestamp,
-            rune_txo.block_height
+            rune_txo.block_height,
+            rune_txo.spent_block_height
         ])?;
 
         tx.execute(
@@ -537,6 +547,7 @@ impl SQLite {
         tx_id: &str,
         output_index: u32,
         spent_tx_id: &str,
+        spent_block_height: u64,
     ) -> Result<(), Error> {
         // let tx = conn.transaction()?;
 
@@ -546,8 +557,8 @@ impl SQLite {
         // )?;
 
         conn.execute(
-            "UPDATE runes_txos SET is_unspent = FALSE, spent_tx_id = ?1 WHERE tx_id = ?2 AND output_index = ?3",
-            params![spent_tx_id, tx_id, output_index],
+            "UPDATE runes_txos SET is_unspent = FALSE, spent_tx_id = ?1, spent_block_height = ?2 WHERE tx_id = ?3 AND output_index = ?4",
+            params![spent_tx_id, spent_block_height, tx_id, output_index],
         )?;
 
         // tx.commit()?;
@@ -646,6 +657,7 @@ impl SQLite {
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
                 block_height: row.get("block_height")?,
+                spent_block_height: row.get("spent_block_height")?,
             })
         })?;
 
@@ -673,6 +685,7 @@ impl SQLite {
                 spent_tx_id: row.get("spent_tx_id")?,
                 timestamp: row.get("timestamp")?,
                 block_height: row.get("block_height")?,
+                spent_block_height: row.get("spent_block_height")?,
             })
         })?;
 
@@ -700,6 +713,7 @@ impl SQLite {
                     spent_tx_id: row.get("spent_tx_id")?,
                     timestamp: row.get("timestamp")?,
                     block_height: row.get("block_height")?,
+                    spent_block_height: row.get("spent_block_height")?,
                 })
             })
             .unwrap();
@@ -731,6 +745,7 @@ impl SQLite {
                     spent_tx_id: row.get("spent_tx_id")?,
                     timestamp: row.get("timestamp")?,
                     block_height: row.get("block_height")?,
+                    spent_block_height: row.get("spent_block_height")?,
                 })
             })
             .unwrap();
@@ -749,19 +764,6 @@ impl SQLite {
         let result = result_iter.map(|r| r.unwrap()).next().unwrap_or_default() as u128;
 
         Ok(result)
-    }
-
-    pub fn get_block_height(&self, conn: &mut Connection) -> Result<u64, Error> {
-        let mut stmt = conn.prepare("SELECT block_height FROM statistics")?;
-        let result_iter = stmt.query_map([], |row| {
-            let block_height: u64 = row.get("block_height")?;
-
-            Ok(block_height)
-        })?;
-
-        let block_height = result_iter.map(|r| r.unwrap()).next().unwrap_or_default();
-
-        Ok(block_height)
     }
 
     pub fn get_transaction(
@@ -832,6 +834,7 @@ impl SQLite {
                     height_end: row.get("height_end")?,
                     offset_start: row.get("offset_start")?,
                     offset_end: row.get("offset_end")?,
+                    block_height: row.get("block_height")?,
                 })
             })?;
 
@@ -860,31 +863,104 @@ impl SQLite {
         Ok(result_iter.map(|r| r.unwrap()).collect())
     }
 
-    pub fn set_block_height(
-        &mut self,
-        conn: &mut Connection,
-        new_block_height: u64,
-    ) -> Result<(), Error> {
-        let mut stmt = conn.prepare("SELECT block_height FROM statistics")?;
+    pub fn get_latest_block(&self, conn: &mut Connection) -> Result<Option<Block>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM blocks ORDER BY height DESC LIMIT 1")?;
         let result_iter = stmt.query_map([], |row| {
-            let block_height: u64 = row.get("block_height")?;
-
-            Ok(block_height)
+            Ok(Block {
+                height: row.get("height")?,
+                hash: row.get("hash")?,
+                timestamp: row.get("timestamp")?,
+            })
         })?;
 
-        let block_height = result_iter.map(|r| r.unwrap()).next();
+        let block = result_iter.map(|r| r.unwrap()).next();
+        Ok(block)
+    }
 
-        if let Some(_) = block_height {
-            conn.execute(
-                "UPDATE statistics SET block_height = ?1 WHERE TRUE",
-                params![new_block_height],
-            )?;
-        } else {
-            conn.execute(
-                "INSERT INTO statistics (block_height) VALUES (?1)",
-                params![new_block_height],
+    pub fn get_block_by_height(
+        &self,
+        conn: &mut Connection,
+        height: u64,
+    ) -> Result<Option<Block>, Error> {
+        let mut stmt = conn.prepare("SELECT * FROM blocks WHERE height = ?1")?;
+        let result_iter = stmt.query_map(params![height], |row| {
+            Ok(Block {
+                height: row.get("height")?,
+                hash: row.get("hash")?,
+                timestamp: row.get("timestamp")?,
+            })
+        })?;
+
+        let block = result_iter.map(|r| r.unwrap()).next();
+        Ok(block)
+    }
+
+    pub fn insert_block(&mut self, conn: &mut Connection, block: Block) -> Result<(), Error> {
+        let count: u64;
+
+        {
+            let mut stmt = conn.prepare("SELECT COUNT(*) FROM blocks")?;
+            let result_iter = stmt.query_map([], |row| {
+                let count: u64 = row.get("0")?;
+
+                Ok(count)
+            })?;
+
+            count = result_iter.map(|r| r.unwrap()).next().unwrap_or_default();
+        }
+
+        let tx = conn.transaction()?;
+
+        if count >= 20 {
+            tx.execute(
+                "DELETE FROM blocks WHERE height = (SELECT MIN(height) FROM blocks)",
+                [],
             )?;
         }
+
+        tx.execute(
+            "INSERT INTO blocks (height, hash, timestamp) VALUES (?1, ?2, ?3)",
+            params![block.height, block.hash, block.timestamp],
+        )?;
+
+        tx.commit()?;
+
+        Ok(())
+    }
+
+    pub fn reorg_blocks(&mut self, conn: &mut Connection, height: u64) -> Result<(), Error> {
+        let tx = conn.transaction()?;
+
+        tx.execute("DELETE FROM blocks WHERE height > ?1", params![height])?;
+
+        tx.execute(
+            "DELETE FROM rune_entries WHERE block_height > ?1",
+            params![height],
+        )?;
+
+        tx.execute("DELETE FROM terms WHERE block_height > ?1", params![height])?;
+
+        tx.execute(
+            "DELETE FROM transactions WHERE block_height > ?1",
+            params![height],
+        )?;
+
+        tx.execute(
+            "DELETE FROM rune_events WHERE block_height > ?1",
+            params![height],
+        )?;
+
+        tx.execute(
+            "DELETE FROM runes_txos WHERE block_height > ?1",
+            params![height],
+        )?;
+
+        tx.execute(
+            "UPDATE runes_txos SET is_unspent = TRUE, spent_tx_id = NULL, spent_block_height = NULL WHERE spent_block_height > ?1", 
+            params![height]
+        )?;
+
+        tx.commit()?;
 
         Ok(())
     }
@@ -1078,6 +1154,14 @@ impl SQLite {
             "
             CREATE INDEX IF NOT EXISTS idx_rune_events_rune_id_event_type
             ON rune_events(rune_id, event_type);
+        ",
+            (),
+        )?;
+
+        conn.execute(
+            "
+            CREATE INDEX IF NOT EXISTS idx_blocks_height
+            ON blocks(height);
         ",
             (),
         )?;

@@ -24,6 +24,7 @@ utoipa-swagger-ui = { version = "6.0.0", features = ["actix-web"] }
 rusqlite = "0.31.0"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.24.0"
+async-recursion = "1.1.0"
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"
