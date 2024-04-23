@@ -70,24 +70,6 @@ impl<'a> Indexer<'a> {
 
             let block = btc_rpc.get_block_by_height(block_height).await?;
 
-            let mut reorg = Reorg {
-                database: database.clone(),
-                conn: self.conn,
-                rpc_url: self.rpc_url.clone(),
-            };
-
-            reorg_detected = reorg
-                .detect_and_handle_reorg(
-                    &block.header.prev_blockhash.to_string().to_lowercase(),
-                    block_height,
-                )
-                .await?
-                .is_some();
-
-            if reorg_detected {
-                break;
-            }
-
             let end_block_fetch_time = Utc::now();
             let artifact_tx_count = block
                 .txdata
@@ -105,6 +87,24 @@ impl<'a> Indexer<'a> {
                 artifact_tx_count,
                 total_tx_count,
             ))?;
+
+            let mut reorg = Reorg {
+                database: database.clone(),
+                conn: self.conn,
+                rpc_url: self.rpc_url.clone(),
+            };
+
+            reorg_detected = reorg
+                .detect_and_handle_reorg(
+                    &block.header.prev_blockhash.to_string().to_lowercase(),
+                    block_height,
+                )
+                .await?
+                .is_some();
+
+            if reorg_detected {
+                break;
+            }
 
             let mut rune_updater = RuneUpdater {
                 database,
